@@ -599,6 +599,9 @@ if ('serviceWorker' in navigator) {
       if (currentIdx > 0) {
         playVideo(currentIdx - 1);
         showHint('◀◀ 前の動画');
+      } else if (loopMode) {
+        playVideo(videos.length - 1);
+        showHint('◀◀ 最後の動画へ');
       } else {
         showHint('最初の動画です');
       }
@@ -607,6 +610,9 @@ if ('serviceWorker' in navigator) {
       if (currentIdx < videos.length - 1) {
         playVideo(currentIdx + 1);
         showHint('▶▶ 次の動画');
+      } else if (loopMode) {
+        playVideo(0);
+        showHint('▶▶ 最初の動画へ');
       } else {
         showHint('最後の動画です');
       }
