@@ -11,254 +11,134 @@
 <title>VideoPlayer</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --bg: #0f0f0f;
-    --bg2: #1a1a1a;
-    --bg3: #252525;
-    --border: rgba(255,255,255,0.08);
-    --border2: rgba(255,255,255,0.15);
-    --text: #f0f0f0;
-    --text2: #888;
-    --accent: #4a9eff;
-    --accent2: #1a6fd4;
-    --danger: #ff4a4a;
-    --radius: 10px;
-    --radius-sm: 6px;
+    --bg: #0f0f0f; --bg2: #1a1a1a; --bg3: #252525;
+    --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.15);
+    --text: #f0f0f0; --text2: #888;
+    --accent: #4a9eff; --accent2: #1a6fd4;
+    --radius: 10px; --radius-sm: 6px;
   }
-
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    -webkit-user-select: none;
-    user-select: none;
+    background: var(--bg); color: var(--text);
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
   }
-
-  /* ===== ヘッダー ===== */
   .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px 10px;
-    border-bottom: 0.5px solid var(--border);
-    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px; border-bottom: 0.5px solid var(--border); flex-shrink: 0;
   }
   .header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
-  .header-actions { display: flex; gap: 8px; }
-
-  /* ===== ボタン ===== */
+  .header-actions { display: flex; gap: 8px; align-items: center; }
   .btn {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 8px 14px;
-    border: 0.5px solid var(--border2);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text);
-    font-size: 14px;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background 0.15s;
+    padding: 8px 14px; border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); background: transparent;
+    color: var(--text); font-size: 14px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; transition: background 0.15s;
   }
   .btn:active { background: var(--bg3); }
   .btn-accent { background: var(--accent); border-color: transparent; color: #fff; }
   .btn-accent:active { background: var(--accent2); }
-  .btn-icon { padding: 8px; border: none; background: transparent; color: var(--text2); cursor: pointer; font-size: 20px; -webkit-tap-highlight-color: transparent; }
-  .btn-icon:active { color: var(--text); }
-
-  /* ===== メインレイアウト ===== */
-  .main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  /* ===== サイドバー（動画リスト） ===== */
+  .btn-danger { border-color: #ff4a4a44; color: #ff6b6b; }
+  .main { display: flex; flex: 1; overflow: hidden; }
   .sidebar {
-    width: 260px;
-    flex-shrink: 0;
+    width: 260px; flex-shrink: 0;
     border-right: 0.5px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    display: flex; flex-direction: column; overflow: hidden;
   }
   .sidebar-header {
-    padding: 10px 12px;
-    border-bottom: 0.5px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
+    padding: 10px 12px; border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
   }
-  .folder-label {
-    font-size: 12px;
-    color: var(--text2);
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .folder-name {
-    font-size: 12px;
-    color: var(--accent);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 130px;
-  }
-  .video-list {
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  .sidebar-title { font-size: 12px; color: var(--text2); }
+  .video-count { font-size: 12px; color: var(--accent); font-weight: 500; }
+  .video-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .video-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 0.5px solid var(--border);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background 0.1s;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-bottom: 0.5px solid var(--border);
+    cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.1s;
   }
   .video-item:active { background: var(--bg3); }
   .video-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
   .video-thumb {
-    width: 44px; height: 28px;
-    background: var(--bg3);
-    border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    font-size: 16px;
-    color: var(--text2);
+    width: 44px; height: 28px; background: var(--bg3);
+    border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 14px; color: var(--text2);
   }
   .video-meta { flex: 1; min-width: 0; }
   .video-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .video-dur { font-size: 11px; color: var(--text2); margin-top: 2px; }
-  .empty-list { padding: 2rem 1rem; text-align: center; color: var(--text2); font-size: 13px; line-height: 1.7; }
-
-  /* ===== プレーヤー ===== */
-  .player-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  .del-btn {
+    background: none; border: none; color: var(--text2);
+    font-size: 16px; padding: 4px 6px; cursor: pointer; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent; border-radius: 4px;
   }
+  .del-btn:active { color: #ff6b6b; background: rgba(255,100,100,0.1); }
+  .empty-list { padding: 2rem 1rem; text-align: center; color: var(--text2); font-size: 13px; line-height: 1.8; }
+  .player-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .video-wrap {
-    flex: 1;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
+    flex: 1; background: #000;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
-  #videoEl {
-    max-width: 100%;
-    max-height: 100%;
-    display: none;
-  }
-  .placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    color: var(--text2);
-  }
+  #videoEl { max-width: 100%; max-height: 100%; display: none; }
+  .placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--text2); }
   .placeholder svg { opacity: 0.3; }
   .placeholder p { font-size: 14px; }
-
-  /* ===== コントロール ===== */
   .controls {
-    flex-shrink: 0;
-    background: var(--bg2);
-    border-top: 0.5px solid var(--border);
-    padding: 10px 16px 14px;
+    flex-shrink: 0; background: var(--bg2);
+    border-top: 0.5px solid var(--border); padding: 10px 16px 14px;
   }
-  .seek-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
+  .seek-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .time { font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 38px; }
   input[type=range] {
-    flex: 1;
-    height: 3px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: var(--border2);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
+    flex: 1; height: 3px; -webkit-appearance: none; appearance: none;
+    background: var(--border2); border-radius: 2px; outline: none; cursor: pointer;
   }
   input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
   }
   #seekBar { background: linear-gradient(to right, var(--accent) 0%, var(--border2) 0%); }
-  .ctrl-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+  .ctrl-row { display: flex; align-items: center; justify-content: space-between; }
   .ctrl-center { display: flex; align-items: center; gap: 4px; }
   .ctrl-right { display: flex; align-items: center; gap: 8px; }
   .vol-wrap { display: flex; align-items: center; gap: 6px; }
   #volBar { width: 70px; }
   .play-main {
-    width: 44px; height: 44px;
-    border-radius: 50%;
-    background: var(--accent);
-    border: none;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); border: none;
     display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background 0.15s;
+    cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.15s;
   }
   .play-main:active { background: var(--accent2); }
   .skip-btn {
-    background: none; border: none;
-    color: var(--text2);
-    font-size: 13px; font-weight: 500;
-    cursor: pointer;
-    padding: 8px;
+    background: none; border: none; color: var(--text2);
+    font-size: 13px; font-weight: 500; cursor: pointer; padding: 8px;
     -webkit-tap-highlight-color: transparent;
     display: flex; flex-direction: column; align-items: center; gap: 1px;
   }
   .skip-btn svg { display: block; }
   .skip-btn span { font-size: 9px; }
-
-  /* ===== iPad横向き最適化 ===== */
-  @media (max-width: 600px) {
-    .sidebar { width: 200px; }
+  .btn-icon {
+    padding: 8px; border: none; background: transparent;
+    color: var(--text2); cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
-  @media (max-width: 480px) {
-    .sidebar { display: none; }
-  }
-
-  /* ===== スクロールバー ===== */
+  .btn-icon:active { color: var(--text); }
+  @media (max-width: 600px) { .sidebar { width: 200px; } }
+  @media (max-width: 480px) { .sidebar { display: none; } }
   .video-list::-webkit-scrollbar { width: 4px; }
   .video-list::-webkit-scrollbar-track { background: transparent; }
   .video-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  /* ===== トースト ===== */
   .toast {
     position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
     background: var(--bg3); border: 0.5px solid var(--border2);
     color: var(--text); padding: 10px 18px; border-radius: 20px;
     font-size: 13px; opacity: 0; pointer-events: none;
-    transition: opacity 0.2s; z-index: 100;
-    white-space: nowrap;
+    transition: opacity 0.2s; z-index: 100; white-space: nowrap;
   }
   .toast.show { opacity: 1; }
+  #fileInput { display: none; }
 </style>
 </head>
 <body>
@@ -266,35 +146,28 @@
 <div class="header">
   <h1>▶ VideoPlayer</h1>
   <div class="header-actions">
-    <button class="btn btn-accent" id="folderBtn">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-      フォルダ選択
+    <button class="btn btn-accent" id="addBtn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      動画を追加
     </button>
-    <button class="btn" id="reloadBtn" title="再読み込み">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-      再読み込み
-    </button>
+    <button class="btn btn-danger" id="clearBtn">全削除</button>
+    <input type="file" id="fileInput" accept="video/*" multiple>
   </div>
 </div>
 
 <div class="main">
-  <!-- サイドバー -->
   <div class="sidebar">
     <div class="sidebar-header">
-      <div class="folder-label">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-        <span class="folder-name" id="folderName">未選択</span>
-      </div>
-      <span style="font-size:11px; color:var(--text2);" id="videoCount"></span>
+      <span class="sidebar-title">保存済み動画</span>
+      <span class="video-count" id="videoCount">0本</span>
     </div>
     <div class="video-list" id="videoList">
-      <div class="empty-list">「フォルダ選択」で<br>動画フォルダを選んでください</div>
+      <div class="empty-list">「動画を追加」で<br>ファイルを選択してください<br><br>複数選択に対応しています</div>
     </div>
   </div>
 
-  <!-- プレーヤー -->
   <div class="player-area">
-    <div class="video-wrap" id="videoWrap">
+    <div class="video-wrap">
       <video id="videoEl" playsinline webkit-playsinline></video>
       <div class="placeholder" id="placeholder">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -312,7 +185,7 @@
       </div>
       <div class="ctrl-row">
         <div class="vol-wrap">
-          <button class="btn-icon" id="muteBtn" aria-label="ミュート切替">
+          <button class="btn-icon" id="muteBtn" aria-label="ミュート">
             <svg id="volIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -320,9 +193,8 @@
           </button>
           <input type="range" id="volBar" min="0" max="1" step="0.05" value="1">
         </div>
-
         <div class="ctrl-center">
-          <button class="skip-btn" id="skipBack" aria-label="10秒戻す">
+          <button class="skip-btn" id="skipBack">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
             </svg>
@@ -333,21 +205,20 @@
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
           </button>
-          <button class="skip-btn" id="skipFwd" aria-label="10秒進む">
+          <button class="skip-btn" id="skipFwd">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
             </svg>
             <span>10</span>
           </button>
         </div>
-
         <div class="ctrl-right">
-          <button class="btn" id="prevBtn" style="padding:8px 10px;" aria-label="前の動画">
+          <button class="btn" id="prevBtn" style="padding:8px 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
             </svg>
           </button>
-          <button class="btn" id="nextBtn" style="padding:8px 10px;" aria-label="次の動画">
+          <button class="btn" id="nextBtn" style="padding:8px 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
             </svg>
@@ -361,120 +232,52 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const DB_NAME = 'videoPlayerDB', STORE_HANDLE = 'folderHandle', DB_VER = 1;
-let db, dirHandle, videos = [], currentIdx = -1;
+const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
+let db, videos = [], currentIdx = -1;
 
-// IndexedDB初期化
 function openDB() {
   return new Promise((res, rej) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      if (!d.objectStoreNames.contains(STORE_HANDLE)) {
-        d.createObjectStore(STORE_HANDLE);
+      if (!d.objectStoreNames.contains(STORE)) {
+        d.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
       }
     };
     req.onsuccess = e => { db = e.target.result; res(); };
-    req.onerror = () => rej('DB open failed');
+    req.onerror = () => rej('DB error');
   });
 }
 
-function saveHandle(handle) {
+function getAllVideos() {
   return new Promise(res => {
-    const tx = db.transaction(STORE_HANDLE, 'readwrite');
-    tx.objectStore(STORE_HANDLE).put(handle, 'dir');
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+    req.onsuccess = () => res(req.result || []);
+  });
+}
+
+function addVideo(name, blob) {
+  return new Promise(res => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const req = tx.objectStore(STORE).add({ name, blob, addedAt: Date.now() });
+    req.onsuccess = () => res(req.result);
+  });
+}
+
+function deleteVideo(id) {
+  return new Promise(res => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
     tx.oncomplete = () => res();
   });
 }
 
-function loadHandle() {
+function clearAll() {
   return new Promise(res => {
-    const tx = db.transaction(STORE_HANDLE, 'readonly');
-    const req = tx.objectStore(STORE_HANDLE).get('dir');
-    req.onsuccess = () => res(req.result || null);
-    req.onerror = () => res(null);
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => res();
   });
-}
-
-// フォルダ読み込み
-async function loadFolder(handle) {
-  dirHandle = handle;
-  videos = [];
-  const VIDEO_EXTS = ['mp4','mov','m4v','avi','mkv','webm'];
-  for await (const entry of handle.values()) {
-    if (entry.kind === 'file') {
-      const ext = entry.name.split('.').pop().toLowerCase();
-      if (VIDEO_EXTS.includes(ext)) {
-        videos.push({ name: entry.name, handle: entry });
-      }
-    }
-  }
-  videos.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-  document.getElementById('folderName').textContent = handle.name;
-  document.getElementById('videoCount').textContent = videos.length + '本';
-  renderList();
-  showToast(videos.length + '件の動画を読み込みました');
-}
-
-function renderList() {
-  const list = document.getElementById('videoList');
-  if (!videos.length) {
-    list.innerHTML = '<div class="empty-list">動画ファイルが見つかりません</div>';
-    return;
-  }
-  list.innerHTML = videos.map((v, i) => `
-    <div class="video-item${i === currentIdx ? ' active' : ''}" data-idx="${i}">
-      <div class="video-thumb">▶</div>
-      <div class="video-meta">
-        <div class="video-name">${v.name}</div>
-        <div class="video-dur" id="dur-${i}">${v.dur || ''}</div>
-      </div>
-    </div>
-  `).join('');
-  list.querySelectorAll('.video-item').forEach(el => {
-    el.addEventListener('click', () => playVideo(parseInt(el.dataset.idx)));
-  });
-}
-
-// 動画再生
-const videoEl = document.getElementById('videoEl');
-const placeholder = document.getElementById('placeholder');
-const playBtn = document.getElementById('playBtn');
-const playIcon = document.getElementById('playIcon');
-const seekBar = document.getElementById('seekBar');
-const currentTimeEl = document.getElementById('currentTime');
-const durationEl = document.getElementById('duration');
-
-async function playVideo(idx) {
-  if (idx < 0 || idx >= videos.length) return;
-  currentIdx = idx;
-  const v = videos[idx];
-
-  // パーミッション確認（iOS再確認が必要な場合）
-  let perm;
-  try {
-    perm = await v.handle.queryPermission({ mode: 'read' });
-    if (perm !== 'granted') {
-      perm = await v.handle.requestPermission({ mode: 'read' });
-    }
-    if (perm !== 'granted') { showToast('ファイルへのアクセスが許可されていません'); return; }
-  } catch(e) {}
-
-  const file = await v.handle.getFile();
-  const url = URL.createObjectURL(file);
-
-  if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-  videoEl._objectURL = url;
-  videoEl.src = url;
-  videoEl.style.display = 'block';
-  placeholder.style.display = 'none';
-  await videoEl.play();
-  updatePlayIcon(false);
-  renderList();
-
-  // リストをスクロール
-  const activeEl = document.querySelector('.video-item.active');
-  if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function formatTime(sec) {
@@ -486,18 +289,92 @@ function formatTime(sec) {
   return m + ':' + String(s).padStart(2,'0');
 }
 
+const videoEl = document.getElementById('videoEl');
+const placeholder = document.getElementById('placeholder');
+const playIcon = document.getElementById('playIcon');
+const seekBar = document.getElementById('seekBar');
+const currentTimeEl = document.getElementById('currentTime');
+const durationEl = document.getElementById('duration');
+
 function updatePlayIcon(paused) {
   playIcon.innerHTML = paused
     ? '<polygon points="5 3 19 12 5 21 5 3" fill="white"/>'
     : '<rect x="6" y="4" width="4" height="16" fill="white"/><rect x="14" y="4" width="4" height="16" fill="white"/>';
 }
 
-// シークバー更新
+function renderList() {
+  const list = document.getElementById('videoList');
+  document.getElementById('videoCount').textContent = videos.length + '本';
+  if (!videos.length) {
+    list.innerHTML = '<div class="empty-list">「動画を追加」で<br>ファイルを選択してください<br><br>複数選択に対応しています</div>';
+    return;
+  }
+  list.innerHTML = videos.map((v, i) => `
+    <div class="video-item${i === currentIdx ? ' active' : ''}" data-idx="${i}">
+      <div class="video-thumb">${i === currentIdx ? '▶' : '　'}</div>
+      <div class="video-meta">
+        <div class="video-name">${v.name}</div>
+        <div class="video-dur" id="dur-${i}">${v.dur || ''}</div>
+      </div>
+      <button class="del-btn" data-id="${v.id}" aria-label="削除">✕</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.video-item').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.del-btn')) return;
+      playVideo(parseInt(el.dataset.idx));
+    });
+  });
+  list.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id);
+      const idx = videos.findIndex(v => v.id === id);
+      await deleteVideo(id);
+      if (currentIdx === idx) stopVideo();
+      else if (currentIdx > idx) currentIdx--;
+      videos = await getAllVideos();
+      renderList();
+    });
+  });
+}
+
+function stopVideo() {
+  if (videoEl._objectURL) { URL.revokeObjectURL(videoEl._objectURL); videoEl._objectURL = null; }
+  videoEl.src = ''; videoEl.style.display = 'none';
+  placeholder.style.display = 'flex';
+  currentIdx = -1;
+  seekBar.value = 0;
+  seekBar.style.background = `linear-gradient(to right, var(--accent) 0%, var(--border2) 0%)`;
+  currentTimeEl.textContent = '0:00';
+  durationEl.textContent = '0:00';
+  updatePlayIcon(true);
+  renderList();
+}
+
+async function playVideo(idx) {
+  if (idx < 0 || idx >= videos.length) return;
+  currentIdx = idx;
+  const v = videos[idx];
+  if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+  const url = URL.createObjectURL(v.blob);
+  videoEl._objectURL = url;
+  videoEl.src = url;
+  videoEl.style.display = 'block';
+  placeholder.style.display = 'none';
+  try { await videoEl.play(); } catch(e) {}
+  updatePlayIcon(false);
+  renderList();
+  const activeEl = document.querySelector('.video-item.active');
+  if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 videoEl.addEventListener('timeupdate', () => {
   if (!videoEl.duration) return;
   const pct = (videoEl.currentTime / videoEl.duration) * 100;
   seekBar.value = pct;
-  seekBar.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--border2) ${pct}%)`;
+  seekBar.style.background = `linear-gradient(to right, var(--accent) ${pct.toFixed(1)}%, var(--border2) ${pct.toFixed(1)}%)`;
   currentTimeEl.textContent = formatTime(videoEl.currentTime);
 });
 
@@ -514,32 +391,22 @@ videoEl.addEventListener('ended', () => {
   updatePlayIcon(true);
   if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
 });
-
 videoEl.addEventListener('play', () => updatePlayIcon(false));
 videoEl.addEventListener('pause', () => updatePlayIcon(true));
 
-// シーク
 seekBar.addEventListener('input', () => {
-  if (videoEl.duration) {
-    videoEl.currentTime = (seekBar.value / 100) * videoEl.duration;
-  }
+  if (videoEl.duration) videoEl.currentTime = (seekBar.value / 100) * videoEl.duration;
 });
 
-// 再生・一時停止
-playBtn.addEventListener('click', () => {
+document.getElementById('playBtn').addEventListener('click', () => {
   if (!videoEl.src) return;
   videoEl.paused ? videoEl.play() : videoEl.pause();
 });
-
-// スキップ
 document.getElementById('skipBack').addEventListener('click', () => { videoEl.currentTime = Math.max(0, videoEl.currentTime - 10); });
 document.getElementById('skipFwd').addEventListener('click', () => { videoEl.currentTime = Math.min(videoEl.duration || 0, videoEl.currentTime + 10); });
-
-// 前・次
 document.getElementById('prevBtn').addEventListener('click', () => { if (currentIdx > 0) playVideo(currentIdx - 1); });
 document.getElementById('nextBtn').addEventListener('click', () => { if (currentIdx < videos.length - 1) playVideo(currentIdx + 1); });
 
-// 音量・ミュート
 const volBar = document.getElementById('volBar');
 const muteBtn = document.getElementById('muteBtn');
 volBar.addEventListener('input', () => { videoEl.volume = volBar.value; });
@@ -548,35 +415,34 @@ muteBtn.addEventListener('click', () => {
   document.getElementById('volIcon').style.opacity = videoEl.muted ? '0.3' : '1';
 });
 
-// フォルダ選択
-document.getElementById('folderBtn').addEventListener('click', async () => {
-  try {
-    const handle = await window.showDirectoryPicker({ mode: 'read' });
-    await saveHandle(handle);
-    await loadFolder(handle);
-  } catch(e) {
-    if (e.name !== 'AbortError') showToast('フォルダの選択に失敗しました');
-  }
+document.getElementById('addBtn').addEventListener('click', () => {
+  document.getElementById('fileInput').click();
 });
 
-// 再読み込み
-document.getElementById('reloadBtn').addEventListener('click', async () => {
-  if (!dirHandle) { showToast('フォルダが選択されていません'); return; }
-  try {
-    const perm = await dirHandle.queryPermission({ mode: 'read' });
-    if (perm === 'granted') {
-      await loadFolder(dirHandle);
-    } else {
-      const p = await dirHandle.requestPermission({ mode: 'read' });
-      if (p === 'granted') await loadFolder(dirHandle);
-      else showToast('フォルダへのアクセスを許可してください');
-    }
-  } catch(e) {
-    showToast('再読み込みに失敗しました');
+document.getElementById('fileInput').addEventListener('change', async e => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  showToast('追加中... ' + files.length + '件');
+  for (const file of files) {
+    const exists = videos.some(v => v.name === file.name);
+    if (!exists) await addVideo(file.name, file);
   }
+  videos = await getAllVideos();
+  renderList();
+  showToast(files.length + '件追加しました');
+  e.target.value = '';
 });
 
-// トースト
+document.getElementById('clearBtn').addEventListener('click', async () => {
+  if (!videos.length) return;
+  if (!confirm('保存済みの動画をすべて削除しますか？')) return;
+  stopVideo();
+  await clearAll();
+  videos = [];
+  renderList();
+  showToast('すべて削除しました');
+});
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -585,19 +451,14 @@ function showToast(msg) {
   t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// Service Worker登録
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-// 起動時に保存済みハンドルを復元
 openDB().then(async () => {
-  const handle = await loadHandle();
-  if (handle) {
-    dirHandle = handle;
-    document.getElementById('folderName').textContent = handle.name;
-    showToast('前回のフォルダ: ' + handle.name + '（再読み込みで復元）');
-  }
+  videos = await getAllVideos();
+  renderList();
+  if (videos.length) showToast(videos.length + '件の動画が保存されています');
 });
 </script>
 </body>
