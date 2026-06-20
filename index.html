@@ -65,9 +65,17 @@
   .video-item:active { background: var(--bg3); }
   .video-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
   .video-thumb {
-    width: 44px; height: 28px; background: var(--bg3);
+    width: 80px; height: 50px; background: var(--bg3);
     border-radius: 4px; display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 14px; color: var(--text2);
+    overflow: hidden; position: relative;
+  }
+  .video-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .video-thumb .play-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.4);
+    font-size: 16px;
   }
   .video-meta { flex: 1; min-width: 0; }
   .video-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -84,9 +92,25 @@
     flex: 1; background: #000;
     display: flex; align-items: center; justify-content: center;
     overflow: hidden;
-    position: relative; /* swipeLayerをこの中に閉じ込める */
+    position: relative;
   }
-  #videoEl { max-width: 100%; max-height: 100%; display: none; }
+
+  /* スライドトラック：3枚の動画を横に並べる */
+  #slideTrack {
+    position: absolute; inset: 0;
+    display: flex; align-items: stretch;
+    width: 300%; left: -100%;
+    will-change: transform;
+  }
+  .slide-item {
+    width: 33.333%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #000; overflow: hidden;
+  }
+  .slide-item video {
+    max-width: 100%; max-height: 100%;
+    display: block;
+  }
   .placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--text2); }
   .placeholder svg { opacity: 0.3; }
   .placeholder p { font-size: 14px; }
@@ -205,7 +229,11 @@
 
   <div class="player-area">
     <div class="video-wrap" id="videoWrap">
-      <video id="videoEl" playsinline webkit-playsinline></video>
+      <div id="slideTrack">
+        <div class="slide-item" id="slidePrev"><video id="videoPrev" playsinline webkit-playsinline muted></video></div>
+        <div class="slide-item" id="slideCurr"><video id="videoEl" playsinline webkit-playsinline></video></div>
+        <div class="slide-item" id="slideNext"><video id="videoNext" playsinline webkit-playsinline muted></video></div>
+      </div>
       <div id="swipeLayer"></div>
       <div class="swipe-arrow left" id="arrowLeft">‹</div>
       <div class="swipe-arrow right" id="arrowRight">›</div>
@@ -225,48 +253,28 @@
         <span class="time" style="text-align:right" id="duration">0:00</span>
       </div>
       <div class="ctrl-row">
-        <div class="vol-wrap">
-          <button class="btn-icon" id="muteBtn" aria-label="ミュート">
-            <svg id="volIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-            </svg>
-          </button>
-          <input type="range" id="volBar" min="0" max="1" step="0.05" value="1">
-        </div>
+        <div style="width:44px;"></div>
         <div class="ctrl-center">
-          <button class="skip-btn" id="skipBack">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+          <button class="btn" id="prevBtn" style="padding:8px 12px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
             </svg>
-            <span>10</span>
           </button>
           <button class="play-main" id="playBtn" aria-label="再生・一時停止">
             <svg id="playIcon" width="22" height="22" viewBox="0 0 24 24" fill="white">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
           </button>
-          <button class="skip-btn" id="skipFwd">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+          <button class="btn" id="nextBtn" style="padding:8px 12px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
             </svg>
-            <span>10</span>
           </button>
         </div>
         <div class="ctrl-right">
           <button class="btn" id="loopBtn" style="padding:8px 10px;" title="ループ">
             <svg id="loopIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4">
               <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-            </svg>
-          </button>
-          <button class="btn" id="prevBtn" style="padding:8px 10px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
-            </svg>
-          </button>
-          <button class="btn" id="nextBtn" style="padding:8px 10px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
             </svg>
           </button>
         </div>
@@ -302,10 +310,30 @@ function getAllVideos() {
   });
 }
 
-function addVideo(name, blob) {
+function generateThumb(blob) {
   return new Promise(res => {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    const url = URL.createObjectURL(blob);
+    v.src = url;
+    v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(3, v.duration * 0.1); });
+    v.addEventListener('seeked', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 120; canvas.height = 68;
+      canvas.getContext('2d').drawImage(v, 0, 0, 120, 68);
+      URL.revokeObjectURL(url);
+      res(canvas.toDataURL('image/jpeg', 0.7));
+    });
+    v.addEventListener('error', () => { URL.revokeObjectURL(url); res(null); });
+    setTimeout(() => { URL.revokeObjectURL(url); res(null); }, 5000);
+  });
+}
+
+function addVideo(name, blob) {
+  return new Promise(async res => {
+    const thumb = await generateThumb(blob);
     const tx = db.transaction(STORE, 'readwrite');
-    const req = tx.objectStore(STORE).add({ name, blob, addedAt: Date.now() });
+    const req = tx.objectStore(STORE).add({ name, blob, thumb, addedAt: Date.now() });
     req.onsuccess = () => res(req.result);
   });
 }
@@ -335,7 +363,11 @@ function formatTime(sec) {
   return m + ':' + String(s).padStart(2,'0');
 }
 
-const videoEl = document.getElementById('videoEl');
+// ===== 動画要素 =====
+const videoEl   = document.getElementById('videoEl');
+const videoPrev = document.getElementById('videoPrev');
+const videoNext = document.getElementById('videoNext');
+const slideTrack = document.getElementById('slideTrack');
 const placeholder = document.getElementById('placeholder');
 const playIcon = document.getElementById('playIcon');
 const seekBar = document.getElementById('seekBar');
@@ -348,6 +380,32 @@ function updatePlayIcon(paused) {
     : '<rect x="6" y="4" width="4" height="16" fill="white"/><rect x="14" y="4" width="4" height="16" fill="white"/>';
 }
 
+// 隣接動画をプリロード
+function preloadNeighbors(idx) {
+  // 前の動画
+  const prevIdx = idx > 0 ? idx - 1 : (loopMode ? videos.length - 1 : -1);
+  if (prevIdx >= 0 && videos[prevIdx]) {
+    if (videoPrev._objectURL) URL.revokeObjectURL(videoPrev._objectURL);
+    const url = URL.createObjectURL(videos[prevIdx].blob);
+    videoPrev._objectURL = url;
+    videoPrev.src = url;
+    videoPrev.load();
+  } else {
+    videoPrev.src = '';
+  }
+  // 次の動画
+  const nextIdx = idx < videos.length - 1 ? idx + 1 : (loopMode ? 0 : -1);
+  if (nextIdx >= 0 && videos[nextIdx]) {
+    if (videoNext._objectURL) URL.revokeObjectURL(videoNext._objectURL);
+    const url = URL.createObjectURL(videos[nextIdx].blob);
+    videoNext._objectURL = url;
+    videoNext.src = url;
+    videoNext.load();
+  } else {
+    videoNext.src = '';
+  }
+}
+
 function renderList() {
   const list = document.getElementById('videoList');
   document.getElementById('videoCount').textContent = videos.length + '本';
@@ -357,7 +415,11 @@ function renderList() {
   }
   list.innerHTML = videos.map((v, i) => `
     <div class="video-item${i === currentIdx ? ' active' : ''}" data-idx="${i}">
-      <div class="video-thumb">${i === currentIdx ? '▶' : '　'}</div>
+      <div class="video-thumb">
+        ${v.thumb
+          ? `<img src="${v.thumb}" alt="">${i === currentIdx ? '<div class="play-overlay">▶</div>' : ''}`
+          : `<div>${i === currentIdx ? '▶' : '　'}</div>`}
+      </div>
       <div class="video-meta">
         <div class="video-name">${v.name}</div>
         <div class="video-dur" id="dur-${i}">${v.dur || ''}</div>
@@ -387,8 +449,12 @@ function renderList() {
 }
 
 function stopVideo() {
-  if (videoEl._objectURL) { URL.revokeObjectURL(videoEl._objectURL); videoEl._objectURL = null; }
-  videoEl.src = ''; videoEl.style.display = 'none';
+  [videoEl, videoPrev, videoNext].forEach(v => {
+    v.pause(); v.src = '';
+    if (v._objectURL) { URL.revokeObjectURL(v._objectURL); v._objectURL = null; }
+  });
+  slideTrack.style.transition = 'none';
+  slideTrack.style.transform = 'translateX(0)';
   placeholder.style.display = 'flex';
   currentIdx = -1;
   seekBar.value = 0;
@@ -399,19 +465,27 @@ function stopVideo() {
   renderList();
 }
 
-async function playVideo(idx) {
+async function playVideo(idx, fromSwipe) {
   if (idx < 0 || idx >= videos.length) return;
   currentIdx = idx;
   const v = videos[idx];
-  if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-  const url = URL.createObjectURL(v.blob);
-  videoEl._objectURL = url;
-  videoEl.src = url;
-  videoEl.style.display = 'block';
+
+  if (!fromSwipe) {
+    // 通常選択：即座に切替
+    slideTrack.style.transition = 'none';
+    slideTrack.style.transform = 'translateX(0)';
+    if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+    const url = URL.createObjectURL(v.blob);
+    videoEl._objectURL = url;
+    videoEl.src = url;
+  }
+
   placeholder.style.display = 'none';
   try { await videoEl.play(); } catch(e) {}
   updatePlayIcon(false);
+  preloadNeighbors(idx);
   renderList();
+
   const activeEl = document.querySelector('.video-item.active');
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
@@ -436,12 +510,8 @@ videoEl.addEventListener('loadedmetadata', () => {
 videoEl.addEventListener('ended', () => {
   updatePlayIcon(true);
   if (loopMode) {
-    // ループON：全動画再生後に先頭に戻る
-    if (currentIdx < videos.length - 1) {
-      playVideo(currentIdx + 1);
-    } else {
-      playVideo(0);
-    }
+    if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
+    else playVideo(0);
   } else {
     if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
   }
@@ -457,24 +527,22 @@ document.getElementById('playBtn').addEventListener('click', () => {
   if (!videoEl.src) return;
   videoEl.paused ? videoEl.play() : videoEl.pause();
 });
-document.getElementById('skipBack').addEventListener('click', () => { videoEl.currentTime = Math.max(0, videoEl.currentTime - 10); });
-document.getElementById('skipFwd').addEventListener('click', () => { videoEl.currentTime = Math.min(videoEl.duration || 0, videoEl.currentTime + 10); });
-document.getElementById('prevBtn').addEventListener('click', () => { if (currentIdx > 0) playVideo(currentIdx - 1); });
-document.getElementById('nextBtn').addEventListener('click', () => { if (currentIdx < videos.length - 1) playVideo(currentIdx + 1); });
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+  if (currentIdx > 0) playVideo(currentIdx - 1);
+  else if (loopMode) playVideo(videos.length - 1);
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
+  else if (loopMode) playVideo(0);
+});
 
 document.getElementById('loopBtn').addEventListener('click', () => {
   loopMode = !loopMode;
   document.getElementById('loopIcon').style.opacity = loopMode ? '1' : '0.4';
   document.getElementById('loopIcon').style.stroke = loopMode ? 'var(--accent)' : 'currentColor';
   showToast(loopMode ? 'ループON' : 'ループOFF');
-});
-
-const volBar = document.getElementById('volBar');
-const muteBtn = document.getElementById('muteBtn');
-volBar.addEventListener('input', () => { videoEl.volume = volBar.value; });
-muteBtn.addEventListener('click', () => {
-  videoEl.muted = !videoEl.muted;
-  document.getElementById('volIcon').style.opacity = videoEl.muted ? '0.3' : '1';
+  preloadNeighbors(currentIdx);
 });
 
 document.getElementById('addBtn').addEventListener('click', () => {
@@ -517,17 +585,18 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-// ===== スワイプ操作（全対策版） =====
+// ===== スライドスワイプ =====
 (function() {
-  const layer  = document.getElementById('swipeLayer');
-  const hint   = document.getElementById('swipeHint');
-  const arrowL = document.getElementById('arrowLeft');
-  const arrowR = document.getElementById('arrowRight');
+  const layer   = document.getElementById('swipeLayer');
+  const hint    = document.getElementById('swipeHint');
+  const arrowL  = document.getElementById('arrowLeft');
+  const arrowR  = document.getElementById('arrowRight');
+  const wrap    = document.getElementById('videoWrap');
 
   let startX = 0, startY = 0, moved = false, ignored = false, active = false;
-  const THRESHOLD   = 45;   // スワイプ判定px
-  const MAX_Y       = 55;   // 縦ズレ許容px
-  const EDGE_MARGIN = 40;   // iPadOS端ジェスチャー領域を除外px
+  const THRESHOLD   = 45;
+  const MAX_Y       = 55;
+  const EDGE_MARGIN = 40;
 
   function showHint(msg) {
     hint.textContent = msg;
@@ -541,92 +610,130 @@ if ('serviceWorker' in navigator) {
     arrowR.style.opacity = '0.25';
   }
 
+  function getWrapWidth() { return wrap.offsetWidth; }
+
   function onStart(e) {
-    const touch = e.touches[0];
-    const x = touch.clientX;
+    const x = e.touches[0].clientX;
     const sw = window.innerWidth;
-
-    // 対策③: 端のiPadOSジェスチャー領域は無視
-    if (x < EDGE_MARGIN || x > sw - EDGE_MARGIN) {
-      ignored = true; active = false; return;
-    }
-
-    ignored = false;
-    active  = true;
-    moved   = false;
-    startX  = x;
-    startY  = touch.clientY;
-
-    // 対策③: ブラウザのスクロールをここで止める（passive:falseが必要）
+    if (x < EDGE_MARGIN || x > sw - EDGE_MARGIN) { ignored = true; active = false; return; }
+    ignored = false; active = true; moved = false;
+    startX = x; startY = e.touches[0].clientY;
+    // スライド中はtransitionをOFF
+    slideTrack.style.transition = 'none';
     e.preventDefault();
   }
 
   function onMove(e) {
     if (!active || ignored) return;
-    e.preventDefault(); // 対策③: スクロール防止
-
+    e.preventDefault();
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-
     if (Math.abs(dx) > 8) {
       moved = true;
+      // リアルタイムにトラックを動かす（紙芝居感）
+      slideTrack.style.transform = `translateX(${dx}px)`;
       arrowL.style.opacity = dx > 0 ? '0.9' : '0.25';
       arrowR.style.opacity = dx < 0 ? '0.9' : '0.25';
     }
   }
 
-  function onEnd(e) {
+  async function onEnd(e) {
     resetArrows();
     if (!active || ignored) { ignored = false; active = false; return; }
     active = false;
 
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
+    const W = getWrapWidth();
 
-    // タップ判定（ほぼ動いていない）
+    // タップ
     if (!moved || Math.abs(dx) < 10) {
+      slideTrack.style.transition = 'none';
+      slideTrack.style.transform = 'translateX(0)';
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && videoEl.src) {
         videoEl.paused ? videoEl.play() : videoEl.pause();
       }
       moved = false; return;
     }
 
-    // 縦方向が大きすぎる場合はキャンセル
-    if (Math.abs(dy) > MAX_Y) { moved = false; return; }
+    if (Math.abs(dy) > MAX_Y) {
+      // キャンセル：元に戻す
+      slideTrack.style.transition = 'transform 0.25s ease';
+      slideTrack.style.transform = 'translateX(0)';
+      moved = false; return;
+    }
 
-    if (dx < -THRESHOLD) {
-      // 左スワイプ → 前の動画（上方向）
-      if (currentIdx > 0) {
-        playVideo(currentIdx - 1);
-        showHint('◀◀ 前の動画');
-      } else if (loopMode) {
-        playVideo(videos.length - 1);
-        showHint('◀◀ 最後の動画へ');
-      } else {
-        showHint('最初の動画です');
-      }
-    } else if (dx > THRESHOLD) {
-      // 右スワイプ → 次の動画（下方向）
-      if (currentIdx < videos.length - 1) {
-        playVideo(currentIdx + 1);
+    if (dx > THRESHOLD) {
+      // 右スワイプ → 次の動画
+      const nextIdx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
+      if (nextIdx >= 0) {
+        // 右にスライドアウト
+        slideTrack.style.transition = 'transform 0.25s ease';
+        slideTrack.style.transform = `translateX(${W}px)`;
+        setTimeout(async () => {
+          // 切替：次をcurrentに
+          slideTrack.style.transition = 'none';
+          slideTrack.style.transform = 'translateX(0)';
+          videoEl.pause();
+          if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+          const url = URL.createObjectURL(videos[nextIdx].blob);
+          videoEl._objectURL = url;
+          videoEl.src = url;
+          currentIdx = nextIdx;
+          try { await videoEl.play(); } catch(e2) {}
+          updatePlayIcon(false);
+          preloadNeighbors(nextIdx);
+          renderList();
+        }, 250);
         showHint('▶▶ 次の動画');
-      } else if (loopMode) {
-        playVideo(0);
-        showHint('▶▶ 最初の動画へ');
       } else {
+        slideTrack.style.transition = 'transform 0.25s ease';
+        slideTrack.style.transform = 'translateX(0)';
         showHint('最後の動画です');
       }
+
+    } else if (dx < -THRESHOLD) {
+      // 左スワイプ → 前の動画
+      const prevIdx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
+      if (prevIdx >= 0) {
+        slideTrack.style.transition = 'transform 0.25s ease';
+        slideTrack.style.transform = `translateX(-${W}px)`;
+        setTimeout(async () => {
+          slideTrack.style.transition = 'none';
+          slideTrack.style.transform = 'translateX(0)';
+          videoEl.pause();
+          if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+          const url = URL.createObjectURL(videos[prevIdx].blob);
+          videoEl._objectURL = url;
+          videoEl.src = url;
+          currentIdx = prevIdx;
+          try { await videoEl.play(); } catch(e2) {}
+          updatePlayIcon(false);
+          preloadNeighbors(prevIdx);
+          renderList();
+        }, 250);
+        showHint('◀◀ 前の動画');
+      } else {
+        slideTrack.style.transition = 'transform 0.25s ease';
+        slideTrack.style.transform = 'translateX(0)';
+        showHint('最初の動画です');
+      }
+
+    } else {
+      // 閾値未満：キャンセル
+      slideTrack.style.transition = 'transform 0.25s ease';
+      slideTrack.style.transform = 'translateX(0)';
     }
     moved = false;
   }
 
-  // 対策④: touchcancel でもリセット
   function onCancel() {
     resetArrows();
+    slideTrack.style.transition = 'transform 0.2s ease';
+    slideTrack.style.transform = 'translateX(0)';
     active = false; moved = false; ignored = false;
   }
 
-  // 対策③: passive:false でpreventDefaultを有効化
   const opts = { passive: false };
   layer.addEventListener('touchstart',  onStart,  opts);
   layer.addEventListener('touchmove',   onMove,   opts);
