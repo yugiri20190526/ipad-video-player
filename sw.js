@@ -1,5 +1,11 @@
-const CACHE = 'video-player-20260620-152314';
-const ASSETS = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'video-player-20250620-001';
+const ASSETS = [
+  '/ipad-video-player/',
+  '/ipad-video-player/index.html',
+  '/ipad-video-player/manifest.json',
+  '/ipad-video-player/icon-192.png',
+  '/ipad-video-player/icon-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(
