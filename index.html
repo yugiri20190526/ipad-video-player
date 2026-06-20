@@ -309,7 +309,7 @@
 <script>
 const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
 const THUMB_VER = 2; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
-let db, videos = [], currentIdx = -1, loopMode = false;
+let db, videos = [], currentIdx = -1, loopMode = true;
 
 function openDB() {
   return new Promise((res, rej) => {
@@ -580,12 +580,18 @@ document.getElementById('nextBtn').addEventListener('click', () => {
   else if (loopMode) playVideo(0);
 });
 
+function updateLoopUI() {
+  const icon = document.getElementById('loopIcon');
+  icon.style.opacity = loopMode ? '1' : '0.4';
+  icon.style.stroke = loopMode ? 'var(--accent)' : 'currentColor';
+}
+
 document.getElementById('loopBtn').addEventListener('click', () => {
   loopMode = !loopMode;
-  document.getElementById('loopIcon').style.opacity = loopMode ? '1' : '0.4';
-  document.getElementById('loopIcon').style.stroke = loopMode ? 'var(--accent)' : 'currentColor';
+  updateLoopUI();
   showToast(loopMode ? 'ループON' : 'ループOFF');
 });
+updateLoopUI(); // 初期表示を loopMode（デフォルトON）に同期
 
 document.getElementById('addBtn').addEventListener('click', () => {
   document.getElementById('fileInput').click();
