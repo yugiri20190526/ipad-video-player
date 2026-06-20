@@ -80,12 +80,6 @@
   .video-meta { flex: 1; min-width: 0; }
   .video-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .video-dur { font-size: 11px; color: var(--text2); margin-top: 2px; }
-  .del-btn {
-    background: none; border: none; color: var(--text2);
-    font-size: 16px; padding: 4px 6px; cursor: pointer; flex-shrink: 0;
-    -webkit-tap-highlight-color: transparent; border-radius: 4px;
-  }
-  .del-btn:active { color: #ff6b6b; background: rgba(255,100,100,0.1); }
   .empty-list { padding: 2rem 1rem; text-align: center; color: var(--text2); font-size: 13px; line-height: 1.8; }
   .player-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .video-wrap {
@@ -239,7 +233,7 @@
       動画を追加
     </button>
     <button class="btn btn-danger" id="clearBtn">全削除</button>
-    <input type="file" id="fileInput" accept="video/*" multiple>
+    <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/x-m4v,video/avi,video/webm,video/x-matroska" multiple>
   </div>
 </div>
 
@@ -366,14 +360,6 @@ function addVideo(name, blob) {
   });
 }
 
-function deleteVideo(id) {
-  return new Promise(res => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => res();
-  });
-}
-
 function clearAll() {
   return new Promise(res => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -452,27 +438,11 @@ function renderList() {
         <div class="video-name">${v.name}</div>
         <div class="video-dur" id="dur-${i}">${v.dur || ''}</div>
       </div>
-      <button class="del-btn" data-id="${v.id}" aria-label="削除">✕</button>
     </div>
   `).join('');
 
   list.querySelectorAll('.video-item').forEach(el => {
-    el.addEventListener('click', e => {
-      if (e.target.closest('.del-btn')) return;
-      playVideo(parseInt(el.dataset.idx));
-    });
-  });
-  list.querySelectorAll('.del-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      const id = parseInt(btn.dataset.id);
-      const idx = videos.findIndex(v => v.id === id);
-      await deleteVideo(id);
-      if (currentIdx === idx) stopVideo();
-      else if (currentIdx > idx) currentIdx--;
-      videos = await getAllVideos();
-      renderList();
-    });
+    el.addEventListener('click', () => playVideo(parseInt(el.dataset.idx)));
   });
 }
 
