@@ -98,11 +98,11 @@
     position: relative; z-index: 1;
   }
 
-  /* スワイプ中に隣動画を表示するオーバーレイ */
+  /* スワイプ中に隣動画を表示するオーバーレイ（z-indexを高く設定） */
   #slideOverlay {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    background: #000; z-index: 2;
+    background: #000; z-index: 20; /* videoElのtransformによるスタッキング問題を回避 */
     pointer-events: none; opacity: 0;
   }
   #slideOverlay video {
@@ -392,11 +392,7 @@ function updatePlayIcon(paused) {
     : '<rect x="6" y="4" width="4" height="16" fill="white"/><rect x="14" y="4" width="4" height="16" fill="white"/>';
 }
 
-// 隣接動画をプリロード（slideVideoを使い回す）
-let preloadURL = null;
-function preloadNeighbors(idx) {
-  // 現状はプリロードなし（オーバーレイ方式では不要）
-}
+// 隣接動画プリロードは現在未使用
 
 function renderList() {
   const list = document.getElementById('videoList');
@@ -428,7 +424,9 @@ function stopVideo() {
   if (videoEl._objectURL) { URL.revokeObjectURL(videoEl._objectURL); videoEl._objectURL = null; }
   videoEl.pause(); videoEl.src = '';
   videoEl.style.marginLeft = '0';
+  videoEl.style.visibility = 'visible';
   slideOverlay.style.opacity = '0';
+  slideOverlay.style.transform = '';
   if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
   slideVideo.src = '';
   placeholder.style.display = 'flex';
@@ -441,25 +439,23 @@ function stopVideo() {
   renderList();
 }
 
-async function playVideo(idx, fromSwipe) {
+async function playVideo(idx) {
   if (idx < 0 || idx >= videos.length) return;
   currentIdx = idx;
   const v = videos[idx];
-
-  if (!fromSwipe) {
-    videoEl.style.marginLeft = '0';
-    if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-    const url = URL.createObjectURL(v.blob);
-    videoEl._objectURL = url;
-    videoEl.src = url;
-  }
-
+  videoEl.style.marginLeft = '0';
+  videoEl.style.visibility = 'visible';
+  slideOverlay.style.opacity = '0';
+  slideOverlay.style.transform = '';
+  if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+  const url = URL.createObjectURL(v.blob);
+  videoEl._objectURL = url;
+  videoEl.src = url;
+  videoEl.load();
   placeholder.style.display = 'none';
   try { await videoEl.play(); } catch(e) {}
   updatePlayIcon(false);
-  preloadNeighbors(idx);
   renderList();
-
   const activeEl = document.querySelector('.video-item.active');
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
@@ -483,12 +479,8 @@ videoEl.addEventListener('loadedmetadata', () => {
 
 videoEl.addEventListener('ended', () => {
   updatePlayIcon(true);
-  if (loopMode) {
-    if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
-    else playVideo(0);
-  } else {
-    if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
-  }
+  const nextIdx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
+  if (nextIdx >= 0) playVideo(nextIdx);
 });
 videoEl.addEventListener('play', () => updatePlayIcon(false));
 videoEl.addEventListener('pause', () => updatePlayIcon(true));
@@ -516,7 +508,6 @@ document.getElementById('loopBtn').addEventListener('click', () => {
   document.getElementById('loopIcon').style.opacity = loopMode ? '1' : '0.4';
   document.getElementById('loopIcon').style.stroke = loopMode ? 'var(--accent)' : 'currentColor';
   showToast(loopMode ? 'ループON' : 'ループOFF');
-  preloadNeighbors(currentIdx);
 });
 
 document.getElementById('addBtn').addEventListener('click', () => {
@@ -586,9 +577,8 @@ if ('serviceWorker' in navigator) {
 
   function resetZoom() {
     scale = 1; panX = 0; panY = 0;
-    videoEl.style.transition = 'transform 0.2s ease';
+    videoEl.style.transition = 'none'; // transition不要、即リセット
     applyZoom();
-    setTimeout(() => { videoEl.style.transition = ''; }, 200);
     zoomBtn.classList.remove('show');
   }
 
@@ -792,22 +782,39 @@ if ('serviceWorker' in navigator) {
         slideOverlay.style.transition = 'transform 0.25s ease';
         slideOverlay.style.transform = 'translateX(0)';
         setTimeout(async () => {
-          // アニメーション完了後に切替
           videoEl.style.transition = '';
           videoEl.style.marginLeft = '0';
-          slideOverlay.style.transition = '';
-          slideOverlay.style.opacity = '0';
-          slideVideo.src = '';
+          videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
           videoEl.pause();
           if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
           const url = URL.createObjectURL(videos[nextIdx].blob);
-          videoEl._objectURL = url; videoEl.src = url;
+          videoEl._objectURL = url;
+          videoEl.src = url;
+          videoEl.load();
           currentIdx = nextIdx;
           resetZoom();
+          // canplayを待ってから再生（空フレーム防止）
+          await new Promise(res => {
+            videoEl.addEventListener('canplay', res, { once: true });
+            setTimeout(res, 800); // タイムアウト保険
+          });
           try { await videoEl.play(); } catch(e2) {}
           updatePlayIcon(false);
-          preloadNeighbors(nextIdx);
           renderList();
+          const activeEl = document.querySelector('.video-item.active');
+          if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          // rAF2回待って確実に新フレームが描画されてからオーバーレイ消去
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            videoEl.style.visibility = 'visible';
+            slideOverlay.style.transition = 'opacity 0.12s ease';
+            slideOverlay.style.opacity = '0';
+            setTimeout(() => {
+              slideOverlay.style.transition = '';
+              slideOverlay.style.transform = '';
+              slideVideo.src = '';
+              if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
+            }, 130);
+          }));
         }, 260);
         showHint('▶▶ 次の動画');
       } else {
@@ -817,7 +824,6 @@ if ('serviceWorker' in navigator) {
     } else if (dx < -THRESHOLD) {
       const prevIdx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
       if (prevIdx >= 0) {
-        // メイン動画を左にスライドアウト、オーバーレイを左から中央へ
         videoEl.style.transition = 'margin-left 0.25s ease';
         videoEl.style.marginLeft = -W + 'px';
         slideOverlay.style.transition = 'transform 0.25s ease';
@@ -825,19 +831,35 @@ if ('serviceWorker' in navigator) {
         setTimeout(async () => {
           videoEl.style.transition = '';
           videoEl.style.marginLeft = '0';
-          slideOverlay.style.transition = '';
-          slideOverlay.style.opacity = '0';
-          slideVideo.src = '';
+          videoEl.style.visibility = 'hidden';
           videoEl.pause();
           if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
           const url = URL.createObjectURL(videos[prevIdx].blob);
-          videoEl._objectURL = url; videoEl.src = url;
+          videoEl._objectURL = url;
+          videoEl.src = url;
+          videoEl.load();
           currentIdx = prevIdx;
           resetZoom();
+          await new Promise(res => {
+            videoEl.addEventListener('canplay', res, { once: true });
+            setTimeout(res, 800);
+          });
           try { await videoEl.play(); } catch(e2) {}
           updatePlayIcon(false);
-          preloadNeighbors(prevIdx);
           renderList();
+          const activeEl = document.querySelector('.video-item.active');
+          if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            videoEl.style.visibility = 'visible';
+            slideOverlay.style.transition = 'opacity 0.12s ease';
+            slideOverlay.style.opacity = '0';
+            setTimeout(() => {
+              slideOverlay.style.transition = '';
+              slideOverlay.style.transform = '';
+              slideVideo.src = '';
+              if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
+            }, 130);
+          }));
         }, 260);
         showHint('◀◀ 前の動画');
       } else {
