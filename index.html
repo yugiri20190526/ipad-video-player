@@ -308,6 +308,7 @@
 
 <script>
 const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
+const THUMB_VER = 2; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
 let db, videos = [], currentIdx = -1, loopMode = false;
 
 function openDB() {
@@ -339,19 +340,59 @@ function getAllVideos() {
 function generateThumb(blob) {
   return new Promise(res => {
     const v = document.createElement('video');
-    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    v.muted = true; v.defaultMuted = true; v.playsInline = true;
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+    v.preload = 'auto';
+    // iOS Safari は DOM 内で実サイズを持つ動画でないとフレームを描画しないことがある
+    v.style.cssText = 'position:fixed;left:-9999px;top:0;width:120px;height:68px;opacity:0.01;pointer-events:none;';
+    document.body.appendChild(v);
+
     const url = URL.createObjectURL(blob);
     v.src = url;
-    v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(3, v.duration * 0.1); });
-    v.addEventListener('seeked', () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 120; canvas.height = 68;
-      canvas.getContext('2d').drawImage(v, 0, 0, 120, 68);
+
+    let settled = false;
+    const timer = setTimeout(() => finish(null), 8000);
+
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { v.pause(); } catch (e) {}
       URL.revokeObjectURL(url);
-      res(canvas.toDataURL('image/jpeg', 0.7));
+      v.removeAttribute('src');
+      try { v.load(); } catch (e) {}
+      if (v.parentNode) v.parentNode.removeChild(v);
+      res(result);
+    }
+
+    function draw() {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 120; c.height = 68;
+        c.getContext('2d').drawImage(v, 0, 0, 120, 68);
+        finish(c.toDataURL('image/jpeg', 0.7));
+      } catch (e) { finish(null); }
+    }
+
+    v.addEventListener('loadeddata', async () => {
+      const d = v.duration;
+      // duration が不明/無限大なら先頭付近、分かれば10%地点（最大3秒）
+      const target = (isFinite(d) && d > 0) ? Math.min(3, d * 0.1) : 0.1;
+      // iOS は一度再生しないとフレームをデコードしないため muted 再生で起こす
+      try { await v.play(); } catch (e) {}
+      let grabbed = false;
+      const grab = () => {
+        if (grabbed) return; grabbed = true;
+        try { v.pause(); } catch (e) {}
+        requestAnimationFrame(() => requestAnimationFrame(draw));
+      };
+      v.addEventListener('seeked', grab, { once: true });
+      // seeked が来ない動画向けの保険：再生で進んだフレームを使う
+      v.addEventListener('timeupdate', () => { if (v.currentTime > 0.05) grab(); }, { once: true });
+      try { v.currentTime = target; } catch (e) { grab(); }
     });
-    v.addEventListener('error', () => { URL.revokeObjectURL(url); res(null); });
-    setTimeout(() => { URL.revokeObjectURL(url); res(null); }, 5000);
+
+    v.addEventListener('error', () => finish(null));
   });
 }
 
@@ -359,9 +400,40 @@ function addVideo(name, blob) {
   return new Promise(async res => {
     const thumb = await generateThumb(blob);
     const tx = db.transaction(STORE, 'readwrite');
-    const req = tx.objectStore(STORE).add({ name, blob, thumb, addedAt: Date.now() });
+    const req = tx.objectStore(STORE).add({ name, blob, thumb, thumbVer: THUMB_VER, addedAt: Date.now() });
     req.onsuccess = () => res(req.result);
   });
+}
+
+// 1件のサムネイルをDBに保存（再生成結果の永続化）
+function saveThumb(id, thumb) {
+  return new Promise(res => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.oncomplete = () => res();
+    tx.onerror = () => res();
+    const store = tx.objectStore(STORE);
+    const g = store.get(id);
+    g.onsuccess = () => {
+      const r = g.result;
+      if (r) { r.thumb = thumb; r.thumbVer = THUMB_VER; store.put(r); }
+    };
+  });
+}
+
+// サムネイル未生成（または旧バージョン）の動画を背景で再生成して自己修復
+async function backfillThumbs() {
+  const targets = videos.filter(v => !v.thumb && (v.thumbVer || 0) < THUMB_VER);
+  for (const v of targets) {
+    const thumb = await generateThumb(v.blob);
+    v.thumb = thumb;
+    v.thumbVer = THUMB_VER;       // 成功・失敗とも記録し再試行ループを防ぐ
+    await saveThumb(v.id, thumb);
+    if (thumb) {                   // 取得できたものから順次UIへ反映
+      const idx = videos.indexOf(v);
+      const cell = idx >= 0 && document.querySelector('.video-item[data-idx="' + idx + '"] .video-thumb');
+      if (cell) cell.innerHTML = '<img src="' + thumb + '" alt="">' + (idx === currentIdx ? '<div class="play-overlay">▶</div>' : '');
+    }
+  }
 }
 
 function clearAll() {
@@ -533,6 +605,7 @@ document.getElementById('fileInput').addEventListener('change', async e => {
   if (curId != null) currentIdx = videos.findIndex(v => v.id === curId);
   renderList();
   showToast(files.length + '件追加しました');
+  backfillThumbs(); // 追加時に生成失敗したサムネがあれば再生成
   e.target.value = '';
 });
 
@@ -869,6 +942,7 @@ openDB().then(async () => {
   videos = await getAllVideos();
   renderList();
   if (videos.length) showToast(videos.length + '件の動画が保存されています');
+  backfillThumbs(); // 保存済みでサムネ欠けの動画を背景で再生成
 });
 </script>
 
