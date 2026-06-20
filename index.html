@@ -786,6 +786,8 @@ if ('serviceWorker' in navigator) {
         slideTrack.style.transition = 'transform 0.25s ease';
         slideTrack.style.transform = `translateX(${W}px)`;
         setTimeout(async () => {
+          // リセット前に両隣スロットをクリア（一瞬表示を防ぐ）
+          videoPrev.src = ''; videoNext.src = '';
           slideTrack.style.transition = 'none';
           slideTrack.style.transform = 'translateX(0)';
           videoEl.pause();
@@ -811,6 +813,8 @@ if ('serviceWorker' in navigator) {
         slideTrack.style.transition = 'transform 0.25s ease';
         slideTrack.style.transform = `translateX(-${W}px)`;
         setTimeout(async () => {
+          // リセット前に両隣スロットをクリア（一瞬表示を防ぐ）
+          videoPrev.src = ''; videoNext.src = '';
           slideTrack.style.transition = 'none';
           slideTrack.style.transform = 'translateX(0)';
           videoEl.pause();
