@@ -1,4 +1,4 @@
-const CACHE = 'video-player-v1';
+const CACHE = 'video-player-20250620-001';
 const ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', e => {
