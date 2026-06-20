@@ -616,5 +616,18 @@ openDB().then(async () => {
   if (videos.length) showToast(videos.length + '件の動画が保存されています');
 });
 </script>
+<div id="ver" style="position:fixed;bottom:4px;right:8px;font-size:11px;color:#666;z-index:999;"></div>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg) {
+        fetch('sw.js').then(r => r.text()).then(t => {
+          const m = t.match(/video-player-[^']+/);
+          document.getElementById('ver').textContent = m ? m[0] : '不明';
+        });
+      }
+    });
+  }
+</script>
 </body>
 </html>
