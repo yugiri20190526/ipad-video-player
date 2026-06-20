@@ -694,12 +694,21 @@ if ('serviceWorker' in navigator) {
     if (pinching) return;
 
     const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
     const sw = window.innerWidth;
-    // ズーム中はスワイプ無効
-    if (scale > 1.05) { active = false; ignored = true; return; }
+
+    if (scale > 1.05) {
+      // ズーム中 → パンモード
+      active = false; ignored = false;
+      startX = x; startY = y;
+      initPanX = panX; initPanY = panY;
+      e.preventDefault();
+      return;
+    }
+
     if (x < EDGE_MARGIN || x > sw - EDGE_MARGIN) { ignored = true; active = false; return; }
     ignored = false; active = true; moved = false;
-    startX = x; startY = e.touches[0].clientY;
+    startX = x; startY = y;
     slideTrack.style.transition = 'none';
     e.preventDefault();
   }
@@ -709,19 +718,30 @@ if ('serviceWorker' in navigator) {
       e.preventDefault();
       const newDist = getDist(e.touches);
       let newScale = initScale * (newDist / initDist);
-      newScale = Math.max(1, Math.min(5, newScale)); // 1〜5倍
+      newScale = Math.max(1, Math.min(5, newScale));
 
-      // ピンチ中心を基準にパン補正
       const ratio = newScale / initScale;
       panX = pinchCx - ratio * (pinchCx - initPanX);
       panY = pinchCy - ratio * (pinchCy - initPanY);
 
-      // パン範囲を制限
       const maxPan = (newScale - 1) * wrap.offsetWidth / 2;
       panX = Math.max(-maxPan, Math.min(maxPan, panX));
       panY = Math.max(-maxPan, Math.min(maxPan, panY));
 
       scale = newScale;
+      videoEl.style.transition = 'none';
+      applyZoom();
+      return;
+    }
+
+    // ズーム中の1本指パン
+    if (scale > 1.05 && e.touches.length === 1) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      const maxPan = (scale - 1) * wrap.offsetWidth / 2;
+      panX = Math.max(-maxPan, Math.min(maxPan, initPanX + dx));
+      panY = Math.max(-maxPan, Math.min(maxPan, initPanY + dy));
       videoEl.style.transition = 'none';
       applyZoom();
       return;
@@ -751,11 +771,20 @@ if ('serviceWorker' in navigator) {
     // ピンチ終了
     if (pinching && e.touches.length < 2) {
       pinching = false;
-      // 1倍以下ならリセット
       if (scale < 1.05) resetZoom();
       return;
     }
     if (pinching) return;
+
+    // ズーム中パンモード終了（タップのみ再生/停止）
+    if (scale > 1.05) {
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && videoEl.src) {
+        videoEl.paused ? videoEl.play() : videoEl.pause();
+      }
+      return;
+    }
 
     resetArrows();
     if (!active || ignored) { ignored = false; active = false; return; }
