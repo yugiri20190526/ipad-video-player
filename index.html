@@ -254,6 +254,11 @@
           </button>
         </div>
         <div class="ctrl-right">
+          <button class="btn" id="loopBtn" style="padding:8px 10px;" title="ループ">
+            <svg id="loopIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+          </button>
           <button class="btn" id="prevBtn" style="padding:8px 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
@@ -274,7 +279,7 @@
 
 <script>
 const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
-let db, videos = [], currentIdx = -1;
+let db, videos = [], currentIdx = -1, loopMode = false;
 
 function openDB() {
   return new Promise((res, rej) => {
@@ -430,7 +435,16 @@ videoEl.addEventListener('loadedmetadata', () => {
 
 videoEl.addEventListener('ended', () => {
   updatePlayIcon(true);
-  if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
+  if (loopMode) {
+    // ループON：全動画再生後に先頭に戻る
+    if (currentIdx < videos.length - 1) {
+      playVideo(currentIdx + 1);
+    } else {
+      playVideo(0);
+    }
+  } else {
+    if (currentIdx < videos.length - 1) playVideo(currentIdx + 1);
+  }
 });
 videoEl.addEventListener('play', () => updatePlayIcon(false));
 videoEl.addEventListener('pause', () => updatePlayIcon(true));
@@ -447,6 +461,13 @@ document.getElementById('skipBack').addEventListener('click', () => { videoEl.cu
 document.getElementById('skipFwd').addEventListener('click', () => { videoEl.currentTime = Math.min(videoEl.duration || 0, videoEl.currentTime + 10); });
 document.getElementById('prevBtn').addEventListener('click', () => { if (currentIdx > 0) playVideo(currentIdx - 1); });
 document.getElementById('nextBtn').addEventListener('click', () => { if (currentIdx < videos.length - 1) playVideo(currentIdx + 1); });
+
+document.getElementById('loopBtn').addEventListener('click', () => {
+  loopMode = !loopMode;
+  document.getElementById('loopIcon').style.opacity = loopMode ? '1' : '0.4';
+  document.getElementById('loopIcon').style.stroke = loopMode ? 'var(--accent)' : 'currentColor';
+  showToast(loopMode ? 'ループON' : 'ループOFF');
+});
 
 const volBar = document.getElementById('volBar');
 const muteBtn = document.getElementById('muteBtn');
@@ -574,20 +595,20 @@ if ('serviceWorker' in navigator) {
     if (Math.abs(dy) > MAX_Y) { moved = false; return; }
 
     if (dx < -THRESHOLD) {
-      // 左スワイプ → 次の動画
-      if (currentIdx < videos.length - 1) {
-        playVideo(currentIdx + 1);
-        showHint('▶▶ 次の動画');
-      } else {
-        showHint('最後の動画です');
-      }
-    } else if (dx > THRESHOLD) {
-      // 右スワイプ → 前の動画
+      // 左スワイプ → 前の動画（上方向）
       if (currentIdx > 0) {
         playVideo(currentIdx - 1);
         showHint('◀◀ 前の動画');
       } else {
         showHint('最初の動画です');
+      }
+    } else if (dx > THRESHOLD) {
+      // 右スワイプ → 次の動画（下方向）
+      if (currentIdx < videos.length - 1) {
+        playVideo(currentIdx + 1);
+        showHint('▶▶ 次の動画');
+      } else {
+        showHint('最後の動画です');
       }
     }
     moved = false;
