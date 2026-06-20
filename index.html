@@ -139,6 +139,46 @@
   }
   .toast.show { opacity: 1; }
   #fileInput { display: none; }
+
+  /* ===== スワイプインジケーター ===== */
+  .swipe-hint {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.7); color: #fff;
+    padding: 12px 22px; border-radius: 24px;
+    font-size: 15px; font-weight: 500;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.15s; z-index: 10;
+    white-space: nowrap;
+  }
+  .swipe-hint.show { opacity: 1; }
+  .swipe-arrow {
+    position: absolute; top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255,255,255,0.25);
+    font-size: 28px; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .swipe-arrow.left { left: 12px; }
+  .swipe-arrow.right { right: 12px; }
+
+  /* 動画上に被せる透明スワイプ受付レイヤー */
+  #swipeLayer {
+    position: absolute; inset: 0;
+    z-index: 5;
+    background: transparent;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none; /* ブラウザのスクロール・ズームを無効化 */
+  }
+
+  /* サイドバー上でもスワイプできるよう全画面カバー（z-index低め） */
+  #swipeOverlay {
+    position: fixed; inset: 0;
+    z-index: 0;
+    background: transparent;
+    pointer-events: none; /* 通常時はクリックを透過 */
+    touch-action: none;
+  }
 </style>
 </head>
 <body>
@@ -167,8 +207,12 @@
   </div>
 
   <div class="player-area">
-    <div class="video-wrap">
+    <div class="video-wrap" id="videoWrap">
       <video id="videoEl" playsinline webkit-playsinline></video>
+      <div id="swipeLayer"></div>
+      <div class="swipe-arrow left" id="arrowLeft">‹</div>
+      <div class="swipe-arrow right" id="arrowRight">›</div>
+      <div class="swipe-hint" id="swipeHint"></div>
       <div class="placeholder" id="placeholder">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
@@ -454,6 +498,117 @@ function showToast(msg) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// ===== スワイプ操作（全対策版） =====
+(function() {
+  const layer  = document.getElementById('swipeLayer');
+  const hint   = document.getElementById('swipeHint');
+  const arrowL = document.getElementById('arrowLeft');
+  const arrowR = document.getElementById('arrowRight');
+
+  let startX = 0, startY = 0, moved = false, ignored = false, active = false;
+  const THRESHOLD   = 45;   // スワイプ判定px
+  const MAX_Y       = 55;   // 縦ズレ許容px
+  const EDGE_MARGIN = 40;   // iPadOS端ジェスチャー領域を除外px
+
+  function showHint(msg) {
+    hint.textContent = msg;
+    hint.classList.add('show');
+    clearTimeout(hint._t);
+    hint._t = setTimeout(() => hint.classList.remove('show'), 900);
+  }
+
+  function resetArrows() {
+    arrowL.style.opacity = '0.25';
+    arrowR.style.opacity = '0.25';
+  }
+
+  function onStart(e) {
+    const touch = e.touches[0];
+    const x = touch.clientX;
+    const sw = window.innerWidth;
+
+    // 対策③: 端のiPadOSジェスチャー領域は無視
+    if (x < EDGE_MARGIN || x > sw - EDGE_MARGIN) {
+      ignored = true; active = false; return;
+    }
+
+    ignored = false;
+    active  = true;
+    moved   = false;
+    startX  = x;
+    startY  = touch.clientY;
+
+    // 対策③: ブラウザのスクロールをここで止める（passive:falseが必要）
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!active || ignored) return;
+    e.preventDefault(); // 対策③: スクロール防止
+
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    if (Math.abs(dx) > 8) {
+      moved = true;
+      arrowL.style.opacity = dx > 0 ? '0.9' : '0.25';
+      arrowR.style.opacity = dx < 0 ? '0.9' : '0.25';
+    }
+  }
+
+  function onEnd(e) {
+    resetArrows();
+    if (!active || ignored) { ignored = false; active = false; return; }
+    active = false;
+
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+
+    // タップ判定（ほぼ動いていない）
+    if (!moved || Math.abs(dx) < 10) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && videoEl.src) {
+        videoEl.paused ? videoEl.play() : videoEl.pause();
+      }
+      moved = false; return;
+    }
+
+    // 縦方向が大きすぎる場合はキャンセル
+    if (Math.abs(dy) > MAX_Y) { moved = false; return; }
+
+    if (dx < -THRESHOLD) {
+      // 左スワイプ → 次の動画
+      if (currentIdx < videos.length - 1) {
+        playVideo(currentIdx + 1);
+        showHint('▶▶ 次の動画');
+      } else {
+        showHint('最後の動画です');
+      }
+    } else if (dx > THRESHOLD) {
+      // 右スワイプ → 前の動画
+      if (currentIdx > 0) {
+        playVideo(currentIdx - 1);
+        showHint('◀◀ 前の動画');
+      } else {
+        showHint('最初の動画です');
+      }
+    }
+    moved = false;
+  }
+
+  // 対策④: touchcancel でもリセット
+  function onCancel() {
+    resetArrows();
+    active = false; moved = false; ignored = false;
+  }
+
+  // 対策③: passive:false でpreventDefaultを有効化
+  const opts = { passive: false };
+  layer.addEventListener('touchstart',  onStart,  opts);
+  layer.addEventListener('touchmove',   onMove,   opts);
+  layer.addEventListener('touchend',    onEnd,    { passive: true });
+  layer.addEventListener('touchcancel', onCancel, { passive: true });
+})();
 
 openDB().then(async () => {
   videos = await getAllVideos();
