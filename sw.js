@@ -1,4 +1,4 @@
-const CACHE = 'video-player-20260620-151950';
+const CACHE = 'video-player-20260620-152314';
 const ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', e => {
