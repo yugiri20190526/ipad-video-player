@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="VideoPlayer">
@@ -21,7 +21,10 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
     background: var(--bg); color: var(--text);
-    height: 100vh; display: flex; flex-direction: column;
+    height: 100vh;
+    height: -webkit-fill-available; /* Safari: アドレスバーを除いた実際の高さ */
+    height: 100dvh;                 /* 動的ビューポート高さ（最新Safari対応） */
+    display: flex; flex-direction: column;
     overflow: hidden; -webkit-user-select: none; user-select: none;
   }
   .header {
@@ -87,7 +90,8 @@
   .placeholder p { font-size: 14px; }
   .controls {
     flex-shrink: 0; background: var(--bg2);
-    border-top: 0.5px solid var(--border); padding: 10px 16px 14px;
+    border-top: 0.5px solid var(--border);
+    padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
   }
   .seek-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .time { font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 38px; }
