@@ -327,7 +327,12 @@ function openDB() {
 function getAllVideos() {
   return new Promise(res => {
     const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
-    req.onsuccess = () => res(req.result || []);
+    req.onsuccess = () => {
+      const list = req.result || [];
+      // ファイル名の昇順（数字は自然順：file2 < file10）
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      res(list);
+    };
   });
 }
 
@@ -522,7 +527,10 @@ document.getElementById('fileInput').addEventListener('change', async e => {
     const exists = videos.some(v => v.name === file.name);
     if (!exists) await addVideo(file.name, file);
   }
+  // 再生中の動画はソート後も同じものを指すようIDで引き直す
+  const curId = currentIdx >= 0 && videos[currentIdx] ? videos[currentIdx].id : null;
   videos = await getAllVideos();
+  if (curId != null) currentIdx = videos.findIndex(v => v.id === curId);
   renderList();
   showToast(files.length + '件追加しました');
   e.target.value = '';
@@ -609,6 +617,60 @@ if ('serviceWorker' in navigator) {
   }
 
   function getWrapWidth() { return wrap.offsetWidth; }
+
+  // 新動画の「実フレーム」が描画されるまで待つ（前動画の残フレーム対策）
+  function nextPaintedFrame(video) {
+    return new Promise(res => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; res(); } };
+      if ('requestVideoFrameCallback' in video) {
+        video.requestVideoFrameCallback(() => finish());
+      } else { // 旧Safari保険：canplay後にrAF2回
+        video.addEventListener('canplay',
+          () => requestAnimationFrame(() => requestAnimationFrame(finish)), { once: true });
+      }
+      setTimeout(finish, 1000); // タイムアウト保険
+    });
+  }
+
+  // 次(dir=1)/前(dir=-1)の動画へスライド遷移
+  function slideTo(idx, dir) {
+    const W = getWrapWidth();
+    // メイン動画をスライドアウト、オーバーレイを中央へ
+    videoEl.style.transition = 'margin-left 0.25s ease';
+    videoEl.style.marginLeft = (dir > 0 ? W : -W) + 'px';
+    slideOverlay.style.transition = 'transform 0.25s ease';
+    slideOverlay.style.transform = 'translateX(0)';
+    setTimeout(async () => {
+      videoEl.style.transition = '';
+      videoEl.style.marginLeft = '0';
+      videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
+      videoEl.pause();
+      if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
+      const url = URL.createObjectURL(videos[idx].blob);
+      videoEl._objectURL = url;
+      videoEl.src = url;
+      videoEl.load();
+      currentIdx = idx;
+      resetZoom();
+      try { await videoEl.play(); } catch(e) {}
+      // 新動画の実フレームが描画されるまで待ってから表示（残フレーム対策の要）
+      await nextPaintedFrame(videoEl);
+      updatePlayIcon(false);
+      renderList();
+      const activeEl = document.querySelector('.video-item.active');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      videoEl.style.visibility = 'visible';
+      slideOverlay.style.transition = 'opacity 0.12s ease';
+      slideOverlay.style.opacity = '0';
+      setTimeout(() => {
+        slideOverlay.style.transition = '';
+        slideOverlay.style.transform = '';
+        slideVideo.src = '';
+        if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
+      }, 130);
+    }, 260);
+  }
 
   function onStart(e) {
     if (e.touches.length === 2) {
@@ -757,7 +819,6 @@ if ('serviceWorker' in navigator) {
 
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
-    const W = getWrapWidth();
 
     // タップ
     if (!moved || Math.abs(dx) < 10) {
@@ -776,46 +837,7 @@ if ('serviceWorker' in navigator) {
     if (dx > THRESHOLD) {
       const nextIdx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
       if (nextIdx >= 0) {
-        // メイン動画を右にスライドアウト、オーバーレイを右から中央へ
-        videoEl.style.transition = 'margin-left 0.25s ease';
-        videoEl.style.marginLeft = W + 'px';
-        slideOverlay.style.transition = 'transform 0.25s ease';
-        slideOverlay.style.transform = 'translateX(0)';
-        setTimeout(async () => {
-          videoEl.style.transition = '';
-          videoEl.style.marginLeft = '0';
-          videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
-          videoEl.pause();
-          if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-          const url = URL.createObjectURL(videos[nextIdx].blob);
-          videoEl._objectURL = url;
-          videoEl.src = url;
-          videoEl.load();
-          currentIdx = nextIdx;
-          resetZoom();
-          // canplayを待ってから再生（空フレーム防止）
-          await new Promise(res => {
-            videoEl.addEventListener('canplay', res, { once: true });
-            setTimeout(res, 800); // タイムアウト保険
-          });
-          try { await videoEl.play(); } catch(e2) {}
-          updatePlayIcon(false);
-          renderList();
-          const activeEl = document.querySelector('.video-item.active');
-          if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          // rAF2回待って確実に新フレームが描画されてからオーバーレイ消去
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            videoEl.style.visibility = 'visible';
-            slideOverlay.style.transition = 'opacity 0.12s ease';
-            slideOverlay.style.opacity = '0';
-            setTimeout(() => {
-              slideOverlay.style.transition = '';
-              slideOverlay.style.transform = '';
-              slideVideo.src = '';
-              if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
-            }, 130);
-          }));
-        }, 260);
+        slideTo(nextIdx, 1);
         showHint('▶▶ 次の動画');
       } else {
         cancelSlide();
@@ -824,43 +846,7 @@ if ('serviceWorker' in navigator) {
     } else if (dx < -THRESHOLD) {
       const prevIdx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
       if (prevIdx >= 0) {
-        videoEl.style.transition = 'margin-left 0.25s ease';
-        videoEl.style.marginLeft = -W + 'px';
-        slideOverlay.style.transition = 'transform 0.25s ease';
-        slideOverlay.style.transform = 'translateX(0)';
-        setTimeout(async () => {
-          videoEl.style.transition = '';
-          videoEl.style.marginLeft = '0';
-          videoEl.style.visibility = 'hidden';
-          videoEl.pause();
-          if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-          const url = URL.createObjectURL(videos[prevIdx].blob);
-          videoEl._objectURL = url;
-          videoEl.src = url;
-          videoEl.load();
-          currentIdx = prevIdx;
-          resetZoom();
-          await new Promise(res => {
-            videoEl.addEventListener('canplay', res, { once: true });
-            setTimeout(res, 800);
-          });
-          try { await videoEl.play(); } catch(e2) {}
-          updatePlayIcon(false);
-          renderList();
-          const activeEl = document.querySelector('.video-item.active');
-          if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            videoEl.style.visibility = 'visible';
-            slideOverlay.style.transition = 'opacity 0.12s ease';
-            slideOverlay.style.opacity = '0';
-            setTimeout(() => {
-              slideOverlay.style.transition = '';
-              slideOverlay.style.transform = '';
-              slideVideo.src = '';
-              if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
-            }, 130);
-          }));
-        }, 260);
+        slideTo(prevIdx, -1);
         showHint('◀◀ 前の動画');
       } else {
         cancelSlide();
