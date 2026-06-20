@@ -82,7 +82,9 @@
   .player-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .video-wrap {
     flex: 1; background: #000;
-    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    position: relative; /* swipeLayerをこの中に閉じ込める */
   }
   #videoEl { max-width: 100%; max-height: 100%; display: none; }
   .placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--text2); }
@@ -172,15 +174,6 @@
     z-index: 5;
     background: transparent;
     -webkit-tap-highlight-color: transparent;
-    touch-action: none; /* ブラウザのスクロール・ズームを無効化 */
-  }
-
-  /* サイドバー上でもスワイプできるよう全画面カバー（z-index低め） */
-  #swipeOverlay {
-    position: fixed; inset: 0;
-    z-index: 0;
-    background: transparent;
-    pointer-events: none; /* 通常時はクリックを透過 */
     touch-action: none;
   }
 </style>
