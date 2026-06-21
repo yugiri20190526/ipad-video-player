@@ -345,7 +345,9 @@
 
 <script>
 const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
-const THUMB_VER = 2; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
+const THUMB_VER = 3; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
+const THUMB_W = 320, THUMB_H = 200; // 高画質化: 表示120x75の約2.7x（Retina対応）。アスペクトは表示枠と同じ1.6
+const THUMB_Q = 0.85;               // JPEG品質
 let db, videos = [], currentIdx = -1, loopMode = true;
 
 function openDB() {
@@ -405,9 +407,21 @@ function generateThumb(blob) {
     function draw() {
       try {
         const c = document.createElement('canvas');
-        c.width = 120; c.height = 68;
-        c.getContext('2d').drawImage(v, 0, 0, 120, 68);
-        finish(c.toDataURL('image/jpeg', 0.7));
+        c.width = THUMB_W; c.height = THUMB_H;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        const vw = v.videoWidth, vh = v.videoHeight;
+        if (vw && vh) {
+          // アスペクト比を保持して中央クロップ（CSSのobject-fit:coverと一致／歪み防止）
+          const targetAR = THUMB_W / THUMB_H, srcAR = vw / vh;
+          let sw, sh, sx, sy;
+          if (srcAR > targetAR) { sh = vh; sw = vh * targetAR; sx = (vw - sw) / 2; sy = 0; }
+          else { sw = vw; sh = vw / targetAR; sx = 0; sy = (vh - sh) / 2; }
+          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, THUMB_W, THUMB_H);
+        } else {
+          ctx.drawImage(v, 0, 0, THUMB_W, THUMB_H);
+        }
+        finish(c.toDataURL('image/jpeg', THUMB_Q));
       } catch (e) { finish(null); }
     }
 
@@ -460,16 +474,17 @@ function saveThumb(id, thumb) {
 
 // サムネイル未生成（または旧バージョン）の動画を背景で再生成して自己修復
 async function backfillThumbs() {
-  const targets = videos.filter(v => !v.thumb && (v.thumbVer || 0) < THUMB_VER);
+  // 旧バージョンのサムネ（未生成含む）を高画質で再生成
+  const targets = videos.filter(v => (v.thumbVer || 0) < THUMB_VER);
   for (const v of targets) {
-    const thumb = await generateThumb(v.blob);
-    v.thumb = thumb;
-    v.thumbVer = THUMB_VER;       // 成功・失敗とも記録し再試行ループを防ぐ
-    await saveThumb(v.id, thumb);
-    if (thumb) {                   // 取得できたものから順次UIへ反映
+    const newThumb = await generateThumb(v.blob);
+    if (newThumb) v.thumb = newThumb; // 成功時のみ差し替え（失敗時は既存サムネを保持）
+    v.thumbVer = THUMB_VER;           // 成功・失敗とも記録し再試行ループを防ぐ
+    await saveThumb(v.id, v.thumb || null);
+    if (newThumb) {                   // 取得できたものから順次UIへ反映
       const idx = videos.indexOf(v);
       const cell = idx >= 0 && document.querySelector('.video-item[data-idx="' + idx + '"] .video-thumb');
-      if (cell) cell.innerHTML = '<img src="' + thumb + '" alt="">' + (idx === currentIdx ? '<div class="play-overlay">▶</div>' : '');
+      if (cell) cell.innerHTML = '<img src="' + newThumb + '" alt="">' + (idx === currentIdx ? '<div class="play-overlay">▶</div>' : '');
     }
   }
 }
