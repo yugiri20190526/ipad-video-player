@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="VideoPlayer">
+<meta name="build" content="video-player-DEV"><!-- CIが置換: index.htmlとsw.jsで同一のビルドID -->
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>VideoPlayer</title>
@@ -1012,16 +1013,12 @@ openDB().then(async () => {
 
 <div id="ver" style="position:fixed;bottom:4px;right:8px;font-size:11px;color:#555;z-index:999;pointer-events:none;"></div>
 <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistration().then(reg => {
-      fetch('sw.js?_=' + Date.now()).then(r => r.text()).then(t => {
-        const m = t.match(/video-player-[^']+/);
-        document.getElementById('ver').textContent = m ? m[0] : '不明';
-      }).catch(() => {
-        document.getElementById('ver').textContent = 'SW取得失敗';
-      });
-    });
-  }
+  // ロード済みドキュメントのビルドIDを表示（＝実際に動いているコードのバージョン）
+  // CIが <meta name="build"> と sw.js の CACHE を同一値に書き換える
+  (function () {
+    const b = document.querySelector('meta[name="build"]');
+    document.getElementById('ver').textContent = (b && b.content) ? b.content : '不明';
+  })();
 </script>
 </body>
 </html>
