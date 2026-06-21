@@ -344,7 +344,8 @@
 </div>
 
 <script>
-const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
+const DB_NAME = 'videoPlayerDB2', STORE = 'videos', CHUNKS = 'chunks', DB_VER = 2;
+const CHUNK_SIZE = 4 * 1024 * 1024; // 動画は4MBの生ArrayBufferチャンクで個別保存（iOSはBlobをIDB保存できないため）
 const THUMB_VER = 3; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
 const THUMB_W = 320, THUMB_H = 200; // 高画質化: 表示120x75の約2.7x（Retina対応）。アスペクトは表示枠と同じ1.6
 const THUMB_Q = 0.85;               // JPEG品質
@@ -357,6 +358,9 @@ function openDB() {
       const d = e.target.result;
       if (!d.objectStoreNames.contains(STORE)) {
         d.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+      }
+      if (!d.objectStoreNames.contains(CHUNKS)) {
+        d.createObjectStore(CHUNKS, { keyPath: ['id', 'idx'] }); // 動画チャンク（id+連番で参照）
       }
     };
     req.onsuccess = e => { db = e.target.result; res(); };
@@ -457,40 +461,85 @@ function fileToArrayBuffer(file) {
   });
 }
 
-// 大きなFileを丸ごとarrayBufferにするとメモリ不足でページが落ちる。
-// 小さなチャンクに分けて読み、メモリ上の小Blobとして連結する：
-//  - ピークメモリは1チャンク分のみ（大量・大容量でもクラッシュしない）
-//  - File（ディスク参照）を外したメモリ上Blobになるので iOS の保存UnknownErrorも回避
-async function fileToStorableBlob(file) {
-  const CHUNK = 4 * 1024 * 1024; // 4MB
-  const type = file.type || 'video/mp4';
-  if (!file.size || file.size <= CHUNK) {
-    return new Blob([await fileToArrayBuffer(file)], { type });
-  }
-  const parts = [];
-  for (let off = 0; off < file.size; off += CHUNK) {
-    const ab = await fileToArrayBuffer(file.slice(off, Math.min(off + CHUNK, file.size)));
-    parts.push(new Blob([ab], { type })); // 小Blob化してarrayBufferは解放
-  }
-  return new Blob(parts, { type });
+// --- IndexedDB ユーティリティ（Promise化） ---
+function idbReq(req) {
+  return new Promise((res, rej) => {
+    req.onsuccess = () => res(req.result);
+    req.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); rej(req.error || new Error('idb error')); };
+  });
+}
+function idbTxDone(tx) {
+  return new Promise((res, rej) => {
+    tx.oncomplete = () => res();
+    tx.onabort = () => rej(tx.error || new Error('transaction aborted')); // 容量超過等はabort
+    tx.onerror = () => rej(tx.error || new Error('transaction error'));
+  });
 }
 
-function addVideo(name, file) {
-  // 保存失敗（容量超過など）は握りつぶさず reject する。呼び出し側で件数集計・通知する。
+// メタ＋全チャンクを削除（保存途中失敗のクリーンアップ／全削除に使用）
+function deleteVideoData(id, chunkCount) {
+  const tx = db.transaction([STORE, CHUNKS], 'readwrite');
+  tx.objectStore(STORE).delete(id);
+  const cs = tx.objectStore(CHUNKS);
+  for (let i = 0; i < (chunkCount || 0); i++) cs.delete([id, i]);
+  return idbTxDone(tx).catch(() => {});
+}
+
+// 動画を 4MB の「生ArrayBufferチャンク」に分けて個別レコードに保存する。
+//  - Blobは一切IDBに入れない → iOSの保存 UnknownError を回避
+//  - 一度に持つのは1チャンク(4MB)だけ・書くたびにtx完了で解放 → GB級でもクラッシュしない
+function addVideo(name, file, onProgress) {
   return new Promise((res, rej) => {
     (async () => {
-      const thumb = await generateThumb(file);     // 先にサムネ生成（要素は内部で破棄）
-      const blob = await fileToStorableBlob(file);  // チャンク読み込みで保存用Blobを作成
-      let tx, req;
+      const thumb = await generateThumb(file);
+      const type = file.type || 'video/mp4';
+      const size = file.size || 0;
+      const total = Math.ceil(size / CHUNK_SIZE);
+      // 1) メタ情報を追加してidを採番（chunks数は確定値で記録。途中失敗時はcleanupで丸ごと削除）
+      //    oncompleteで採番する（await跨ぎでtxが自動完了して oncomplete を取り逃すレースを回避）
+      const metaTx = db.transaction(STORE, 'readwrite');
+      const addReq = metaTx.objectStore(STORE)
+        .add({ name, thumb, thumbVer: THUMB_VER, type, size, chunks: total, addedAt: Date.now() });
+      const id = await new Promise((resolve, reject) => {
+        metaTx.oncomplete = () => resolve(addReq.result);
+        metaTx.onabort = () => reject(metaTx.error || new Error('meta tx abort'));
+        metaTx.onerror = () => reject(metaTx.error || new Error('meta tx error'));
+        addReq.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); };
+      });
+      // 2) チャンクを1つずつ読み書き（put直後に同期でハンドラ登録→レース無し。書くたびにメモリ解放）
       try {
-        tx = db.transaction(STORE, 'readwrite');
-        req = tx.objectStore(STORE).add({ name, blob, thumb, thumbVer: THUMB_VER, addedAt: Date.now() });
-      } catch (e) { return rej(e); }
-      req.onsuccess = () => res(req.result);
-      req.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); rej(req.error || new Error('add failed')); };
-      tx.onabort = () => rej(tx.error || new Error('transaction aborted')); // QuotaExceededError等はtxがabortする
+        let idx = 0;
+        for (let off = 0; off < size; off += CHUNK_SIZE) {
+          const ab = await fileToArrayBuffer(file.slice(off, Math.min(off + CHUNK_SIZE, size)));
+          const tx = db.transaction(CHUNKS, 'readwrite');
+          tx.objectStore(CHUNKS).put({ id, idx, data: ab });
+          await idbTxDone(tx);
+          idx++;
+          if (onProgress && total) onProgress(idx / total);
+        }
+      } catch (e) {
+        await deleteVideoData(id, total); // 中途半端なレコードを掃除してから失敗を伝える
+        throw e;
+      }
+      res(id);
     })().catch(rej);
   });
+}
+
+// チャンクを読み出して再生用Blobに組み立てる（Blobを「作って使う」のは可。保存だけが不可）
+async function getVideoBlob(rec) {
+  if (!rec) return null;
+  if (rec.blob instanceof Blob) return rec.blob; // 旧形式レコードの保険
+  const n = rec.chunks || 0;
+  if (!n) return null;
+  const type = rec.type || 'video/mp4';
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const tx = db.transaction(CHUNKS, 'readonly');
+    const c = await idbReq(tx.objectStore(CHUNKS).get([rec.id, i]));
+    if (c && c.data) parts.push(new Blob([c.data], { type })); // 小Blob化し生ABは解放
+  }
+  return parts.length ? new Blob(parts, { type }) : null;
 }
 
 // 1件のサムネイルをDBに保存（再生成結果の永続化）
@@ -513,7 +562,8 @@ async function backfillThumbs() {
   // 旧バージョンのサムネ（未生成含む）を高画質で再生成
   const targets = videos.filter(v => (v.thumbVer || 0) < THUMB_VER);
   for (const v of targets) {
-    const newThumb = await generateThumb(v.blob);
+    const blob = await getVideoBlob(v);
+    const newThumb = blob ? await generateThumb(blob) : null;
     if (newThumb) v.thumb = newThumb; // 成功時のみ差し替え（失敗時は既存サムネを保持）
     v.thumbVer = THUMB_VER;           // 成功・失敗とも記録し再試行ループを防ぐ
     await saveThumb(v.id, v.thumb || null);
@@ -527,9 +577,11 @@ async function backfillThumbs() {
 
 function clearAll() {
   return new Promise(res => {
-    const tx = db.transaction(STORE, 'readwrite');
+    const tx = db.transaction([STORE, CHUNKS], 'readwrite');
     tx.objectStore(STORE).clear();
+    tx.objectStore(CHUNKS).clear();
     tx.oncomplete = () => res();
+    tx.onerror = () => res();
   });
 }
 
@@ -612,8 +664,10 @@ async function playVideo(idx) {
   videoEl.style.visibility = 'visible';
   slideOverlay.style.opacity = '0';
   slideOverlay.style.transform = '';
+  const blob = await getVideoBlob(v); // チャンクから再生用Blobを組み立て
+  if (!blob) { showToast('動画データを読み込めませんでした'); return; }
   if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-  const url = URL.createObjectURL(v.blob);
+  const url = URL.createObjectURL(blob);
   videoEl._objectURL = url;
   videoEl.src = url;
   videoEl.load();
@@ -700,7 +754,8 @@ document.getElementById('fileInput').addEventListener('change', async e => {
       if (videos.some(v => v.name === file.name)) {
         skipped++;                                     // 既に保存済み（同名）
       } else {
-        try { await addVideo(file.name, file); added++; }   // サムネ生成＋DB保存
+        // 大きいファイルはチャンク進捗でバーを動かす
+        try { await addVideo(file.name, file, frac => setProgress(((i + frac) / total) * 100, label)); added++; }
         catch (err) { failed++; lastErr = err; console.error('addVideo failed:', file.name, err); }
       }
       setProgress(((i + 1) / total) * 100, label);     // ファイル完了
@@ -863,8 +918,10 @@ if ('serviceWorker' in navigator) {
       videoEl.style.marginLeft = '0';
       videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
       videoEl.pause();
+      const blob = await getVideoBlob(videos[idx]); // チャンクから再生用Blobを組み立て
+      if (!blob) { cancelSlide(); showToast('動画データを読み込めませんでした'); return; }
       if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
-      const url = URL.createObjectURL(videos[idx].blob);
+      const url = URL.createObjectURL(blob);
       videoEl._objectURL = url;
       videoEl.src = url;
       videoEl.load();
@@ -970,11 +1027,14 @@ if ('serviceWorker' in navigator) {
           ? (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1))
           : (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1));
         if (neighborIdx >= 0 && videos[neighborIdx]) {
-          if (slideVideo._objectURL) URL.revokeObjectURL(slideVideo._objectURL);
-          const url = URL.createObjectURL(videos[neighborIdx].blob);
-          slideVideo._objectURL = url;
-          slideVideo.src = url;
-          slideVideo.load();
+          getVideoBlob(videos[neighborIdx]).then(blob => { // チャンク組み立ては非同期（スワイプを止めない）
+            if (!blob) return;
+            if (slideVideo._objectURL) URL.revokeObjectURL(slideVideo._objectURL);
+            const url = URL.createObjectURL(blob);
+            slideVideo._objectURL = url;
+            slideVideo.src = url;
+            slideVideo.load();
+          });
         }
       }
       moved = true;
