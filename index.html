@@ -66,7 +66,7 @@
   .video-item:active { background: var(--bg3); }
   .video-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
   .video-thumb {
-    width: 80px; height: 50px; background: var(--bg3);
+    width: 120px; height: 75px; background: var(--bg3);
     border-radius: 4px; display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 14px; color: var(--text2);
     overflow: hidden; position: relative;
@@ -524,7 +524,6 @@ function renderList() {
           : `<div>${i === currentIdx ? '▶' : '　'}</div>`}
       </div>
       <div class="video-meta">
-        <div class="video-name">${v.name}</div>
         <div class="video-dur" id="dur-${i}">${v.dur || ''}</div>
       </div>
     </div>
