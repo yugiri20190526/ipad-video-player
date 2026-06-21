@@ -143,8 +143,14 @@
     -webkit-appearance: none; width: 14px; height: 14px;
     border-radius: 50%; background: var(--accent); cursor: pointer;
   }
-  #seekBar { height: 12px; background: linear-gradient(to right, var(--accent) 0%, var(--border2) 0%); }
-  #seekBar::-webkit-slider-thumb { width: 42px; height: 42px; }
+  /* つまみ(42px)を入力ボックス内に収め、iOSで動画へはみ出さないようにする
+     入力の高さ=つまみ径、細いバーはrunnable-trackで描画、つまみは負マージンでトラック中央へ */
+  #seekBar { height: 42px; background: transparent; }
+  #seekBar::-webkit-slider-runnable-track {
+    height: 12px; border-radius: 6px;
+    background: linear-gradient(to right, var(--accent) var(--seek-pct, 0%), var(--border2) var(--seek-pct, 0%));
+  }
+  #seekBar::-webkit-slider-thumb { width: 42px; height: 42px; margin-top: -15px; }
   .ctrl-row { display: flex; align-items: center; justify-content: space-between; }
   .ctrl-center { display: flex; align-items: center; gap: 16px; }
   .ctrl-right { display: flex; align-items: center; gap: 8px; }
@@ -540,7 +546,7 @@ function stopVideo() {
   placeholder.style.display = 'flex';
   currentIdx = -1;
   seekBar.value = 0;
-  seekBar.style.background = `linear-gradient(to right, var(--accent) 0%, var(--border2) 0%)`;
+  seekBar.style.setProperty('--seek-pct', '0%');
   currentTimeEl.textContent = '0:00';
   durationEl.textContent = '0:00';
   updatePlayIcon(true);
@@ -572,7 +578,7 @@ videoEl.addEventListener('timeupdate', () => {
   if (!videoEl.duration) return;
   const pct = (videoEl.currentTime / videoEl.duration) * 100;
   seekBar.value = pct;
-  seekBar.style.background = `linear-gradient(to right, var(--accent) ${pct.toFixed(1)}%, var(--border2) ${pct.toFixed(1)}%)`;
+  seekBar.style.setProperty('--seek-pct', pct.toFixed(1) + '%');
   currentTimeEl.textContent = formatTime(videoEl.currentTime);
 });
 
