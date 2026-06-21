@@ -131,7 +131,7 @@
     padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
   }
   .seek-row {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
     touch-action: none;
   }
   .time { font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 38px; }
@@ -143,14 +143,15 @@
     -webkit-appearance: none; width: 14px; height: 14px;
     border-radius: 50%; background: var(--accent); cursor: pointer;
   }
-  #seekBar { background: linear-gradient(to right, var(--accent) 0%, var(--border2) 0%); }
+  #seekBar { height: 6px; background: linear-gradient(to right, var(--accent) 0%, var(--border2) 0%); }
+  #seekBar::-webkit-slider-thumb { width: 28px; height: 28px; }
   .ctrl-row { display: flex; align-items: center; justify-content: space-between; }
   .ctrl-center { display: flex; align-items: center; gap: 16px; }
   .ctrl-right { display: flex; align-items: center; gap: 8px; }
   .vol-wrap { display: flex; align-items: center; gap: 6px; }
   #volBar { width: 70px; }
   .nav-btn {
-    width: 54px; height: 54px; border-radius: 50%;
+    width: 81px; height: 81px; border-radius: 50%;
     border: 0.5px solid var(--border2); background: transparent; color: var(--text);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.15s;
@@ -158,7 +159,7 @@
   }
   .nav-btn:active { background: var(--bg3); }
   .play-main {
-    width: 54px; height: 54px; border-radius: 50%;
+    width: 81px; height: 81px; border-radius: 50%;
     background: var(--accent); border: none;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.15s;
@@ -192,6 +193,27 @@
   }
   .toast.show { opacity: 1; }
   #fileInput { display: none; }
+
+  /* ===== 追加進捗オーバーレイ ===== */
+  .progress-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.6);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    display: none; align-items: center; justify-content: center;
+  }
+  .progress-overlay.show { display: flex; }
+  .progress-box {
+    background: var(--bg2); border: 0.5px solid var(--border2);
+    border-radius: 16px; padding: 24px 28px; width: 78%; max-width: 320px;
+    text-align: center;
+  }
+  .progress-label {
+    font-size: 13px; color: var(--text2); margin-bottom: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .progress-track { height: 8px; background: var(--border2); border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width 0.2s ease; }
+  .progress-pct { margin-top: 12px; font-size: 24px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 
   /* ===== スワイプインジケーター ===== */
   .swipe-hint {
@@ -277,17 +299,17 @@
         <div style="width:44px;"></div>
         <div class="ctrl-center">
           <button class="nav-btn" id="prevBtn" aria-label="前の動画">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
             </svg>
           </button>
           <button class="play-main" id="playBtn" aria-label="再生・一時停止">
-            <svg id="playIcon" width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <svg id="playIcon" width="36" height="36" viewBox="0 0 24 24" fill="white">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
           </button>
           <button class="nav-btn" id="nextBtn" aria-label="次の動画">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
             </svg>
           </button>
@@ -305,6 +327,14 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <div class="progress-label" id="progressLabel">追加中…</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-pct" id="progressPct">0%</div>
+  </div>
+</div>
 
 <script>
 const DB_NAME = 'videoPlayerDB2', STORE = 'videos', DB_VER = 1;
@@ -402,6 +432,7 @@ function addVideo(name, blob) {
     const tx = db.transaction(STORE, 'readwrite');
     const req = tx.objectStore(STORE).add({ name, blob, thumb, thumbVer: THUMB_VER, addedAt: Date.now() });
     req.onsuccess = () => res(req.result);
+    req.onerror = () => res(null); // 失敗しても進捗ループを止めない
   });
 }
 
@@ -600,19 +631,30 @@ document.getElementById('addBtn').addEventListener('click', () => {
 document.getElementById('fileInput').addEventListener('change', async e => {
   const files = Array.from(e.target.files);
   if (!files.length) return;
-  showToast('追加中... ' + files.length + '件');
-  for (const file of files) {
-    const exists = videos.some(v => v.name === file.name);
-    if (!exists) await addVideo(file.name, file);
+  const total = files.length;
+  showProgress(true);
+  setProgress(0, '追加の準備中…');
+  try {
+    for (let i = 0; i < total; i++) {
+      const file = files[i];
+      const label = `追加中 (${i + 1}/${total})  ${file.name}`;
+      setProgress((i / total) * 100, label);          // ファイル処理開始時点
+      const exists = videos.some(v => v.name === file.name);
+      if (!exists) await addVideo(file.name, file);    // サムネ生成＋DB保存
+      setProgress(((i + 1) / total) * 100, label);     // ファイル完了
+    }
+    // 再生中の動画はソート後も同じものを指すようIDで引き直す
+    const curId = currentIdx >= 0 && videos[currentIdx] ? videos[currentIdx].id : null;
+    videos = await getAllVideos();
+    if (curId != null) currentIdx = videos.findIndex(v => v.id === curId);
+    renderList();
+    setProgress(100, '完了');
+  } finally {
+    setTimeout(() => showProgress(false), 350); // 100%を一瞬見せてから閉じる
+    e.target.value = '';
   }
-  // 再生中の動画はソート後も同じものを指すようIDで引き直す
-  const curId = currentIdx >= 0 && videos[currentIdx] ? videos[currentIdx].id : null;
-  videos = await getAllVideos();
-  if (curId != null) currentIdx = videos.findIndex(v => v.id === curId);
-  renderList();
-  showToast(files.length + '件追加しました');
+  showToast(total + '件追加しました');
   backfillThumbs(); // 追加時に生成失敗したサムネがあれば再生成
-  e.target.value = '';
 });
 
 document.getElementById('clearBtn').addEventListener('click', async () => {
@@ -631,6 +673,16 @@ function showToast(msg) {
   t.classList.add('show');
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function showProgress(show) {
+  document.getElementById('progressOverlay').classList.toggle('show', show);
+}
+function setProgress(pct, label) {
+  pct = Math.max(0, Math.min(100, pct));
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = Math.round(pct) + '%';
+  if (label != null) document.getElementById('progressLabel').textContent = label;
 }
 
 if ('serviceWorker' in navigator) {
