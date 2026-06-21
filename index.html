@@ -447,10 +447,23 @@ function generateThumb(blob) {
   });
 }
 
-function addVideo(name, blob) {
-  // 保存失敗（容量超過など）は握りつぶさず reject する。呼び出し側で件数集計・通知する
+function fileToArrayBuffer(file) {
+  if (file.arrayBuffer) return file.arrayBuffer();
+  return new Promise((res, rej) => { // 古いiOS向けフォールバック
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = () => rej(fr.error || new Error('read failed'));
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+function addVideo(name, file) {
+  // 保存失敗（容量超過など）は握りつぶさず reject する。呼び出し側で件数集計・通知する。
+  // iOS Safari は File（ディスク参照）を IndexedDB に保存すると UnknownError になることがあるため、
+  // 一度 arrayBuffer に読み込んでメモリ上の Blob に作り直してから保存する（定番の回避策）。
   return new Promise((res, rej) => {
-    generateThumb(blob).then(thumb => {
+    Promise.all([generateThumb(file), fileToArrayBuffer(file)]).then(([thumb, buf]) => {
+      const blob = new Blob([buf], { type: file.type || 'video/mp4' });
       let tx, req;
       try {
         tx = db.transaction(STORE, 'readwrite');
