@@ -1,4 +1,4 @@
-const CACHE = 'video-player-20260622-035200';
+const CACHE = 'video-player-20260622-040207';
 const ASSETS = [
   '/ipad-video-player/',
   '/ipad-video-player/index.html',
