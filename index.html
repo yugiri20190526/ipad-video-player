@@ -448,12 +448,18 @@ function generateThumb(blob) {
 }
 
 function addVideo(name, blob) {
-  return new Promise(async res => {
-    const thumb = await generateThumb(blob);
-    const tx = db.transaction(STORE, 'readwrite');
-    const req = tx.objectStore(STORE).add({ name, blob, thumb, thumbVer: THUMB_VER, addedAt: Date.now() });
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => res(null); // 失敗しても進捗ループを止めない
+  // 保存失敗（容量超過など）は握りつぶさず reject する。呼び出し側で件数集計・通知する
+  return new Promise((res, rej) => {
+    generateThumb(blob).then(thumb => {
+      let tx, req;
+      try {
+        tx = db.transaction(STORE, 'readwrite');
+        req = tx.objectStore(STORE).add({ name, blob, thumb, thumbVer: THUMB_VER, addedAt: Date.now() });
+      } catch (e) { return rej(e); }
+      req.onsuccess = () => res(req.result);
+      req.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); rej(req.error || new Error('add failed')); };
+      tx.onabort = () => rej(tx.error || new Error('transaction aborted')); // QuotaExceededError等はtxがabortする
+    }).catch(rej);
   });
 }
 
@@ -653,6 +659,7 @@ document.getElementById('fileInput').addEventListener('change', async e => {
   const files = Array.from(e.target.files);
   if (!files.length) return;
   const total = files.length;
+  let added = 0, skipped = 0, failed = 0, lastErr = null;
   showProgress(true);
   setProgress(0, '追加の準備中…');
   try {
@@ -660,8 +667,12 @@ document.getElementById('fileInput').addEventListener('change', async e => {
       const file = files[i];
       const label = `追加中 (${i + 1}/${total})  ${file.name}`;
       setProgress((i / total) * 100, label);          // ファイル処理開始時点
-      const exists = videos.some(v => v.name === file.name);
-      if (!exists) await addVideo(file.name, file);    // サムネ生成＋DB保存
+      if (videos.some(v => v.name === file.name)) {
+        skipped++;                                     // 既に保存済み（同名）
+      } else {
+        try { await addVideo(file.name, file); added++; }   // サムネ生成＋DB保存
+        catch (err) { failed++; lastErr = err; console.error('addVideo failed:', file.name, err); }
+      }
       setProgress(((i + 1) / total) * 100, label);     // ファイル完了
     }
     // 再生中の動画はソート後も同じものを指すようIDで引き直す
@@ -669,14 +680,37 @@ document.getElementById('fileInput').addEventListener('change', async e => {
     videos = await getAllVideos();
     if (curId != null) currentIdx = videos.findIndex(v => v.id === curId);
     renderList();
-    setProgress(100, '完了');
+    setProgress(100, failed ? `完了（${failed}件失敗）` : '完了');
   } finally {
     setTimeout(() => showProgress(false), 350); // 100%を一瞬見せてから閉じる
     e.target.value = '';
   }
-  showToast(total + '件追加しました');
+  // 結果を正確に通知（失敗を黙って成功扱いにしない）
+  let msg = `${added}件追加`;
+  if (skipped) msg += ` / 重複${skipped}件`;
+  if (failed) msg += ` / 失敗${failed}件`;
+  showToast(msg);
+  if (failed) await reportAddFailure(failed, lastErr);
   backfillThumbs(); // 追加時に生成失敗したサムネがあれば再生成
 });
+
+// 追加失敗の原因（特に容量超過）をユーザーに分かりやすく通知
+async function reportAddFailure(failed, err) {
+  const name = err && (err.name || '');
+  const isQuota = name === 'QuotaExceededError' || /quota|exceed/i.test(String(err && err.message || err));
+  let detail = '';
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      const mb = n => (n / 1048576).toFixed(0);
+      detail = `\n\n現在の使用量: ${mb(usage)}MB / 上限の目安: ${mb(quota)}MB`;
+    }
+  } catch (_) {}
+  const head = isQuota
+    ? `${failed}件の動画を保存できませんでした。\nブラウザの保存容量の上限に達した可能性があります。`
+    : `${failed}件の動画を保存できませんでした。\nエラー: ${name || err}`;
+  alert(head + detail + '\n\n不要な動画を削除して空きを作るか、ファイルサイズの小さい動画でお試しください。');
+}
 
 document.getElementById('clearBtn').addEventListener('click', async () => {
   if (!videos.length) return;
@@ -1016,6 +1050,11 @@ if ('serviceWorker' in navigator) {
   layer.addEventListener('touchend',    onEnd,    { passive: true });
   layer.addEventListener('touchcancel', onCancel, { passive: true });
 })();
+
+// 永続ストレージを要求（対応ブラウザでは容量上限が増え、勝手に消されにくくなる）
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => {}); }).catch(() => {});
+}
 
 openDB().then(async () => {
   videos = await getAllVideos();
