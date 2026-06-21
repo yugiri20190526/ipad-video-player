@@ -264,7 +264,7 @@
       動画を追加
     </button>
     <button class="btn btn-danger" id="clearBtn">全削除</button>
-    <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/x-m4v,video/avi,video/webm,video/x-matroska" multiple>
+    <input type="file" id="fileInput" accept="video/*" multiple>
   </div>
 </div>
 
@@ -457,13 +457,30 @@ function fileToArrayBuffer(file) {
   });
 }
 
+// 大きなFileを丸ごとarrayBufferにするとメモリ不足でページが落ちる。
+// 小さなチャンクに分けて読み、メモリ上の小Blobとして連結する：
+//  - ピークメモリは1チャンク分のみ（大量・大容量でもクラッシュしない）
+//  - File（ディスク参照）を外したメモリ上Blobになるので iOS の保存UnknownErrorも回避
+async function fileToStorableBlob(file) {
+  const CHUNK = 4 * 1024 * 1024; // 4MB
+  const type = file.type || 'video/mp4';
+  if (!file.size || file.size <= CHUNK) {
+    return new Blob([await fileToArrayBuffer(file)], { type });
+  }
+  const parts = [];
+  for (let off = 0; off < file.size; off += CHUNK) {
+    const ab = await fileToArrayBuffer(file.slice(off, Math.min(off + CHUNK, file.size)));
+    parts.push(new Blob([ab], { type })); // 小Blob化してarrayBufferは解放
+  }
+  return new Blob(parts, { type });
+}
+
 function addVideo(name, file) {
   // 保存失敗（容量超過など）は握りつぶさず reject する。呼び出し側で件数集計・通知する。
-  // iOS Safari は File（ディスク参照）を IndexedDB に保存すると UnknownError になることがあるため、
-  // 一度 arrayBuffer に読み込んでメモリ上の Blob に作り直してから保存する（定番の回避策）。
   return new Promise((res, rej) => {
-    Promise.all([generateThumb(file), fileToArrayBuffer(file)]).then(([thumb, buf]) => {
-      const blob = new Blob([buf], { type: file.type || 'video/mp4' });
+    (async () => {
+      const thumb = await generateThumb(file);     // 先にサムネ生成（要素は内部で破棄）
+      const blob = await fileToStorableBlob(file);  // チャンク読み込みで保存用Blobを作成
       let tx, req;
       try {
         tx = db.transaction(STORE, 'readwrite');
@@ -472,7 +489,7 @@ function addVideo(name, file) {
       req.onsuccess = () => res(req.result);
       req.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); rej(req.error || new Error('add failed')); };
       tx.onabort = () => rej(tx.error || new Error('transaction aborted')); // QuotaExceededError等はtxがabortする
-    }).catch(rej);
+    })().catch(rej);
   });
 }
 
@@ -669,8 +686,8 @@ document.getElementById('addBtn').addEventListener('click', () => {
 });
 
 document.getElementById('fileInput').addEventListener('change', async e => {
-  const files = Array.from(e.target.files);
-  if (!files.length) return;
+  const files = Array.from(e.target.files || []);
+  if (!files.length) { showToast('ファイルを取得できませんでした'); return; }
   const total = files.length;
   let added = 0, skipped = 0, failed = 0, lastErr = null;
   showProgress(true);
@@ -687,6 +704,7 @@ document.getElementById('fileInput').addEventListener('change', async e => {
         catch (err) { failed++; lastErr = err; console.error('addVideo failed:', file.name, err); }
       }
       setProgress(((i + 1) / total) * 100, label);     // ファイル完了
+      await new Promise(r => setTimeout(r));            // 1件ごとに譲ってGC・再描画の隙を作る
     }
     // 再生中の動画はソート後も同じものを指すようIDで引き直す
     const curId = currentIdx >= 0 && videos[currentIdx] ? videos[currentIdx].id : null;
