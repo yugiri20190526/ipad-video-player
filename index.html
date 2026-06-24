@@ -66,7 +66,7 @@
   .video-item:active { background: var(--bg3); }
   .video-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
   .video-thumb {
-    width: 120px; height: 75px; background: var(--bg3);
+    width: 180px; height: 113px; background: var(--bg3);
     border-radius: 4px; display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 14px; color: var(--text2);
     overflow: hidden; position: relative;
@@ -303,7 +303,7 @@
         <span class="time" style="text-align:right" id="duration">0:00</span>
       </div>
       <div class="ctrl-row">
-        <div style="width:44px;"></div>
+        <div style="width:84px;"></div>
         <div class="ctrl-center">
           <button class="nav-btn" id="prevBtn" aria-label="前の動画">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -322,7 +322,12 @@
           </button>
         </div>
         <div class="ctrl-right">
-          <button class="btn" id="loopBtn" style="padding:8px 10px;" title="ループ">
+          <button class="btn" id="repeatBtn" style="padding:8px 10px;" title="リピート">
+            <svg id="repeatIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+          </button>
+          <button class="btn" id="loopBtn" style="padding:8px 10px;" title="プレイリスト周回">
             <svg id="loopIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4">
               <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
             </svg>
@@ -348,7 +353,9 @@ const DB_NAME = 'videoPlayerDB3', STORE = 'videos', DB_VER = 1; // 既存v2DBと
 const THUMB_VER = 3; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
 const THUMB_W = 320, THUMB_H = 200; // 高画質化: 表示120x75の約2.7x（Retina対応）。アスペクトは表示枠と同じ1.6
 const THUMB_Q = 0.85;               // JPEG品質
-let db, videos = [], currentIdx = -1, loopMode = true;
+let db, videos = [], currentIdx = -1;
+let loopMode = true;        // プレイリスト周回（前/次/スワイプ/末尾で先頭へ）。既定ON
+let repeatMode = 'one';     // 終了時の挙動: 'one'=同じ動画をリピート(既定) / 'next'=次の動画へ
 
 function openDB() {
   return new Promise((res, rej) => {
@@ -594,6 +601,7 @@ async function playVideo(idx) {
   const url = URL.createObjectURL(v.blob);
   videoEl._objectURL = url;
   videoEl.src = url;
+  videoEl.loop = (repeatMode === 'one'); // 同じ動画リピートはネイティブloopで
   videoEl.load();
   placeholder.style.display = 'none';
   try { await videoEl.play(); } catch(e) {}
@@ -621,6 +629,8 @@ videoEl.addEventListener('loadedmetadata', () => {
 });
 
 videoEl.addEventListener('ended', () => {
+  // repeatMode 'one' は videoEl.loop=true でシームレスにループする（'ended'は発火しない）。
+  // ここに来るのは 'next' モードのみ → 次の動画へ（末尾は loopMode なら先頭へ）
   updatePlayIcon(true);
   const nextIdx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
   if (nextIdx >= 0) playVideo(nextIdx);
@@ -646,6 +656,28 @@ document.getElementById('nextBtn').addEventListener('click', () => {
   else if (loopMode) playVideo(0);
 });
 
+// 終了時の挙動（リピート1 / 次へ）— 専用ボタン
+function applyRepeatMode() {
+  const icon = document.getElementById('repeatIcon');
+  const one = repeatMode === 'one';
+  // 'one'=リピート1（円形矢印＋1） / 'next'=次へ（スキップ）
+  icon.innerHTML = one
+    ? '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="16" font-size="11" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">1</text>'
+    : '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>';
+  icon.style.color = 'var(--accent)';
+  icon.style.opacity = '1';
+  document.getElementById('repeatBtn').title = one ? '同じ動画をリピート' : '次の動画へ';
+  videoEl.loop = one; // 'one'はネイティブloopでシームレス（endedは発火しない）
+}
+
+document.getElementById('repeatBtn').addEventListener('click', () => {
+  repeatMode = repeatMode === 'one' ? 'next' : 'one';
+  applyRepeatMode();
+  showToast(repeatMode === 'one' ? '🔂 同じ動画をリピート' : '⏭ 終わったら次の動画へ');
+});
+applyRepeatMode(); // 初期表示を repeatMode（既定: 同じ動画リピート）に同期
+
+// プレイリスト周回（前/次/スワイプ/末尾→先頭）のON/OFF — 既存のループボタン
 function updateLoopUI() {
   const icon = document.getElementById('loopIcon');
   icon.style.opacity = loopMode ? '1' : '0.4';
@@ -655,9 +687,9 @@ function updateLoopUI() {
 document.getElementById('loopBtn').addEventListener('click', () => {
   loopMode = !loopMode;
   updateLoopUI();
-  showToast(loopMode ? 'ループON' : 'ループOFF');
+  showToast(loopMode ? 'プレイリスト周回ON' : 'プレイリスト周回OFF');
 });
-updateLoopUI(); // 初期表示を loopMode（デフォルトON）に同期
+updateLoopUI(); // 初期表示を loopMode（既定ON）に同期
 
 document.getElementById('addBtn').addEventListener('click', () => {
   document.getElementById('fileInput').click();
@@ -767,6 +799,22 @@ if ('serviceWorker' in navigator) {
   }
 
   zoomBtn.addEventListener('click', resetZoom);
+
+  // トリプルタップ（3連続タップ）で拡大を標準サイズに戻す。
+  // 戻り値 true = この タップで解除した（再生/一時停止を行わない）
+  let tapCount = 0, lastTapTime = 0;
+  function registerTap() {
+    const now = Date.now();
+    tapCount = (now - lastTapTime < 400) ? tapCount + 1 : 1; // 400ms以内の連続タップを数える
+    lastTapTime = now;
+    if (tapCount >= 3 && scale > 1.05) {
+      tapCount = 0;
+      resetZoom();
+      showToast('標準サイズに戻しました');
+      return true;
+    }
+    return false;
+  }
 
   function getDist(t) {
     const dx = t[0].clientX - t[1].clientX;
@@ -984,7 +1032,7 @@ if ('serviceWorker' in navigator) {
       const dx = e.changedTouches[0].clientX - startX;
       const dy = e.changedTouches[0].clientY - startY;
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && videoEl.src) {
-        videoEl.paused ? videoEl.play() : videoEl.pause();
+        if (!registerTap()) { videoEl.paused ? videoEl.play() : videoEl.pause(); } // 3連続なら解除
       }
       return;
     }
@@ -1000,7 +1048,7 @@ if ('serviceWorker' in navigator) {
     if (!moved || Math.abs(dx) < 10) {
       cancelSlide();
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && videoEl.src) {
-        videoEl.paused ? videoEl.play() : videoEl.pause();
+        if (!registerTap()) { videoEl.paused ? videoEl.play() : videoEl.pause(); } // 3連続なら解除（拡大時のみ）
       }
       moved = false; return;
     }
