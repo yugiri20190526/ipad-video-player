@@ -397,7 +397,8 @@ function generateThumb(blob) {
     v.src = url;
 
     let settled = false;
-    const timer = setTimeout(() => finish(null), 8000);
+    // タイムアウト時も、フレームが読めていれば最後の手段でキャプチャ（seeked/timeupdate不発の救済）
+    const timer = setTimeout(() => { if (!settled && v.videoWidth) draw(); else finish(null); }, 12000);
 
     function finish(result) {
       if (settled) return;
@@ -480,7 +481,7 @@ async function addVideo(name, blob) {
 }
 
 // 1件のサムネイルをDBに保存（再生成結果の永続化）
-function saveThumb(id, thumb) {
+function saveThumb(id, thumb, tries) {
   return new Promise(res => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.oncomplete = () => res();
@@ -489,19 +490,24 @@ function saveThumb(id, thumb) {
     const g = store.get(id);
     g.onsuccess = () => {
       const r = g.result;
-      if (r) { r.thumb = thumb; r.thumbVer = THUMB_VER; store.put(r); }
+      if (r) { r.thumb = thumb; r.thumbVer = THUMB_VER; r.thumbTries = tries || 0; store.put(r); }
     };
   });
 }
 
-// 旧バージョンのサムネ（未生成含む）を高画質で背景再生成して自己修復
+const MAX_THUMB_TRIES = 4; // 未生成サムネを諦めるまでの再試行回数（複数回のアプリ起動にまたがる）
+
+// 旧バージョン（要再生成）＋ 未生成で再試行上限未満のものを高画質で背景再生成して自己修復
 async function backfillThumbs() {
-  const targets = videos.filter(v => (v.thumbVer || 0) < THUMB_VER);
+  const targets = videos.filter(v =>
+    (v.thumbVer || 0) < THUMB_VER ||                      // 生成ロジック更新 → 作り直し
+    (!v.thumb && (v.thumbTries || 0) < MAX_THUMB_TRIES)); // 未生成 → 数回まで再挑戦
   for (const v of targets) {
     const newThumb = await generateThumb(v.blob);
-    if (newThumb) v.thumb = newThumb; // 成功時のみ差し替え（失敗時は既存サムネを保持）
-    v.thumbVer = THUMB_VER;           // 成功・失敗とも記録し再試行ループを防ぐ
-    await saveThumb(v.id, v.thumb || null);
+    if (newThumb) { v.thumb = newThumb; v.thumbTries = 0; }   // 成功
+    else { v.thumbTries = (v.thumbTries || 0) + 1; }          // 失敗回数を記録（既存サムネは保持）
+    v.thumbVer = THUMB_VER;
+    await saveThumb(v.id, v.thumb || null, v.thumbTries);
     if (newThumb) {                   // 取得できたものから順次UIへ反映
       const idx = videos.indexOf(v);
       const cell = idx >= 0 && document.querySelector('.video-item[data-idx="' + idx + '"] .video-thumb');
