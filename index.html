@@ -872,9 +872,9 @@ if ('serviceWorker' in navigator) {
   function slideTo(idx, dir) {
     const W = getWrapWidth();
     // メイン動画をスライドアウト、オーバーレイを中央へ（どちらもtransformでGPU合成）
-    videoEl.style.transition = 'transform 0.25s ease-out';
+    videoEl.style.transition = 'transform 0.45s ease-in-out';
     slideX = (dir > 0 ? W : -W); applyZoom();
-    slideOverlay.style.transition = 'transform 0.25s ease-out';
+    slideOverlay.style.transition = 'transform 0.45s ease-in-out';
     slideOverlay.style.transform = 'translateX(0)';
     setTimeout(async () => {
       videoEl.style.transition = '';
@@ -903,8 +903,8 @@ if ('serviceWorker' in navigator) {
         slideOverlay.style.transform = '';
         slideVideo.src = '';
         if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
-      }, 130);
-    }, 260);
+      }, 180);
+    }, 460);
   }
 
   function onStart(e) {
@@ -985,8 +985,8 @@ if ('serviceWorker' in navigator) {
       if (!moved) {
         // スワイプ開始時に隣動画をオーバーレイにロード
         const neighborIdx = dx > 0
-          ? (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1))   // 左→右
-          : (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1));   // 右→左
+          ? (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1))   // 左→右 = 次
+          : (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1));   // 右→左 = 前
         if (neighborIdx >= 0 && videos[neighborIdx]) {
           if (slideVideo._objectURL) URL.revokeObjectURL(slideVideo._objectURL);
           const url = URL.createObjectURL(videos[neighborIdx].blob);
@@ -1011,15 +1011,15 @@ if ('serviceWorker' in navigator) {
   }
 
   function cancelSlide() {
-    videoEl.style.transition = 'transform 0.25s ease-out';
+    videoEl.style.transition = 'transform 0.35s ease-out';
     slideX = 0; applyZoom(); // 元位置へスムーズに戻す
-    slideOverlay.style.transition = 'transform 0.25s ease, opacity 0.25s';
+    slideOverlay.style.transition = 'transform 0.35s ease, opacity 0.35s';
     slideOverlay.style.opacity = '0';
     setTimeout(() => {
       videoEl.style.transition = '';
       slideOverlay.style.transition = '';
       slideVideo.src = '';
-    }, 260);
+    }, 360);
   }
 
   function onCancel() {
@@ -1069,8 +1069,8 @@ if ('serviceWorker' in navigator) {
       moved = false; return;
     }
 
-    if (dx > THRESHOLD) {              // 左→右 = 次の動画（ユーザー指定）
-      const idx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
+    if (dx > THRESHOLD) {              // 左→右 = 次の動画
+      const idx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
       if (idx >= 0) {
         slideTo(idx, 1);
         showHint('▶▶ 次の動画');
@@ -1079,7 +1079,7 @@ if ('serviceWorker' in navigator) {
         showHint('端の動画です');
       }
     } else if (dx < -THRESHOLD) {      // 右→左 = 前の動画
-      const idx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
+      const idx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
       if (idx >= 0) {
         slideTo(idx, -1);
         showHint('◀◀ 前の動画');
