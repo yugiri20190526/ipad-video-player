@@ -579,7 +579,7 @@ function renderList() {
 function stopVideo() {
   if (videoEl._objectURL) { URL.revokeObjectURL(videoEl._objectURL); videoEl._objectURL = null; }
   videoEl.pause(); videoEl.src = '';
-  videoEl.style.marginLeft = '0';
+  if (videoEl._clearSlide) videoEl._clearSlide(); else videoEl.style.transform = '';
   videoEl.style.visibility = 'visible';
   slideOverlay.style.opacity = '0';
   slideOverlay.style.transform = '';
@@ -599,7 +599,7 @@ async function playVideo(idx) {
   if (idx < 0 || idx >= videos.length) return;
   currentIdx = idx;
   const v = videos[idx];
-  videoEl.style.marginLeft = '0';
+  if (videoEl._clearSlide) videoEl._clearSlide(); else videoEl.style.transform = '';
   videoEl.style.visibility = 'visible';
   slideOverlay.style.opacity = '0';
   slideOverlay.style.transform = '';
@@ -783,6 +783,7 @@ if ('serviceWorker' in navigator) {
 
   // ズーム状態
   let scale = 1, panX = 0, panY = 0;
+  let slideX = 0; // スワイプの水平オフセット（transformで合成しGPU描画）
   let pinching = false, initDist = 0, initScale = 1;
   let initPanX = 0, initPanY = 0, pinchCx = 0, pinchCy = 0;
 
@@ -793,18 +794,22 @@ if ('serviceWorker' in navigator) {
   const EDGE_MARGIN = 40;
 
   function applyZoom() {
-    videoEl.style.transform = `scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
+    // スワイプ(translateX)とズーム(scale+pan)を1つのtransformに合成（GPU合成で滑らか）
+    videoEl.style.transform = `translateX(${slideX}px) scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
     zoomBtn.classList.toggle('show', scale > 1.05);
   }
 
   function resetZoom() {
-    scale = 1; panX = 0; panY = 0;
+    scale = 1; panX = 0; panY = 0; slideX = 0;
     videoEl.style.transition = 'none'; // transition不要、即リセット
     applyZoom();
     zoomBtn.classList.remove('show');
   }
 
   zoomBtn.addEventListener('click', resetZoom);
+
+  // IIFE外（playVideo/stopVideo）からスライド位置だけ即リセットするための公開関数
+  videoEl._clearSlide = () => { slideX = 0; videoEl.style.transition = 'none'; applyZoom(); };
 
   // トリプルタップ（3連続タップ）で拡大を標準サイズに戻す。
   // 戻り値 true = この タップで解除した（再生/一時停止を行わない）
@@ -866,14 +871,14 @@ if ('serviceWorker' in navigator) {
   // 次(dir=1)/前(dir=-1)の動画へスライド遷移
   function slideTo(idx, dir) {
     const W = getWrapWidth();
-    // メイン動画をスライドアウト、オーバーレイを中央へ
-    videoEl.style.transition = 'margin-left 0.25s ease';
-    videoEl.style.marginLeft = (dir > 0 ? W : -W) + 'px';
-    slideOverlay.style.transition = 'transform 0.25s ease';
+    // メイン動画をスライドアウト、オーバーレイを中央へ（どちらもtransformでGPU合成）
+    videoEl.style.transition = 'transform 0.25s ease-out';
+    slideX = (dir > 0 ? W : -W); applyZoom();
+    slideOverlay.style.transition = 'transform 0.25s ease-out';
     slideOverlay.style.transform = 'translateX(0)';
     setTimeout(async () => {
       videoEl.style.transition = '';
-      videoEl.style.marginLeft = '0';
+      slideX = 0; // 位置リセット（この後hiddenにしてからresetZoomで確定）
       videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
       videoEl.pause();
       if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
@@ -980,8 +985,8 @@ if ('serviceWorker' in navigator) {
       if (!moved) {
         // スワイプ開始時に隣動画をオーバーレイにロード
         const neighborIdx = dx > 0
-          ? (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1))
-          : (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1));
+          ? (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1))   // 左→右
+          : (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1));   // 右→左
         if (neighborIdx >= 0 && videos[neighborIdx]) {
           if (slideVideo._objectURL) URL.revokeObjectURL(slideVideo._objectURL);
           const url = URL.createObjectURL(videos[neighborIdx].blob);
@@ -993,7 +998,7 @@ if ('serviceWorker' in navigator) {
       moved = true;
       const W = wrap.offsetWidth;
       videoEl.style.transition = 'none';
-      videoEl.style.marginLeft = dx + 'px';
+      slideX = dx; applyZoom();            // transformで追従（GPU合成・再レイアウトなし）
       if (dx > 0) {
         slideOverlay.style.transform = `translateX(${dx - W}px)`;
       } else {
@@ -1006,8 +1011,8 @@ if ('serviceWorker' in navigator) {
   }
 
   function cancelSlide() {
-    videoEl.style.transition = 'margin-left 0.25s ease';
-    videoEl.style.marginLeft = '0';
+    videoEl.style.transition = 'transform 0.25s ease-out';
+    slideX = 0; applyZoom(); // 元位置へスムーズに戻す
     slideOverlay.style.transition = 'transform 0.25s ease, opacity 0.25s';
     slideOverlay.style.opacity = '0';
     setTimeout(() => {
@@ -1064,23 +1069,23 @@ if ('serviceWorker' in navigator) {
       moved = false; return;
     }
 
-    if (dx > THRESHOLD) {
-      const nextIdx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
-      if (nextIdx >= 0) {
-        slideTo(nextIdx, 1);
+    if (dx > THRESHOLD) {              // 左→右 = 次の動画（ユーザー指定）
+      const idx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
+      if (idx >= 0) {
+        slideTo(idx, 1);
         showHint('▶▶ 次の動画');
       } else {
         cancelSlide();
-        showHint('最後の動画です');
+        showHint('端の動画です');
       }
-    } else if (dx < -THRESHOLD) {
-      const prevIdx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
-      if (prevIdx >= 0) {
-        slideTo(prevIdx, -1);
+    } else if (dx < -THRESHOLD) {      // 右→左 = 前の動画
+      const idx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
+      if (idx >= 0) {
+        slideTo(idx, -1);
         showHint('◀◀ 前の動画');
       } else {
         cancelSlide();
-        showHint('最初の動画です');
+        showHint('端の動画です');
       }
     } else {
       cancelSlide();
