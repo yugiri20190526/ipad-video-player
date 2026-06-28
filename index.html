@@ -992,8 +992,8 @@ if ('serviceWorker' in navigator) {
       if (!moved) {
         // スワイプ開始時に隣動画をオーバーレイにロード
         const neighborIdx = dx > 0
-          ? (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1))   // 左→右 = 次
-          : (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1));   // 右→左 = 前
+          ? (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1))   // 左→右 = 前
+          : (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1));   // 右→左 = 次
         if (neighborIdx >= 0 && videos[neighborIdx]) {
           // サムネイルを即座に表示して黒い瞬間を防ぐ
           if (videos[neighborIdx].thumb) {
@@ -1084,12 +1084,12 @@ if ('serviceWorker' in navigator) {
       moved = false; return;
     }
 
-    if (dx > THRESHOLD) {              // 左→右 = 次の動画
-      const idx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
+    if (dx > THRESHOLD) {              // 左→右 = 前の動画
+      const idx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
       if (idx >= 0) { slideTo(idx, 1); }
       else cancelSlide();
-    } else if (dx < -THRESHOLD) {      // 右→左 = 前の動画
-      const idx = currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1);
+    } else if (dx < -THRESHOLD) {      // 右→左 = 次の動画
+      const idx = currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1);
       if (idx >= 0) { slideTo(idx, -1); }
       else cancelSlide();
     } else {
