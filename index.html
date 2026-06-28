@@ -90,28 +90,25 @@
     position: relative;
   }
 
-  /* メイン動画 */
+  /* メイン動画: 高さ優先で自然アスペクト比（object-fitなし＝GPU再サンプルなし） */
   #videoEl {
-    width: 100%; height: 100%; object-fit: contain;
+    max-height: 100%; width: auto;
     display: block;
     transform-origin: center center;
     will-change: transform;
     position: relative; z-index: 1;
   }
 
-  /* スワイプ中に隣動画を表示するオーバーレイ（z-indexを高く設定） */
+  /* スワイプ中に隣動画を表示するオーバーレイ */
   #slideOverlay {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    background: #000; z-index: 20;
+    background: #000 no-repeat center / contain; z-index: 20;
     pointer-events: none; opacity: 0;
   }
-  #slideOverlay img {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: contain; display: none;
-  }
+  #slideOverlay img { display: none; }
   #slideOverlay video {
-    width: 100%; height: 100%; object-fit: contain;
+    max-height: 100%; width: auto;
     display: block;
   }
 
@@ -588,9 +585,10 @@ function stopVideo() {
   videoEl.style.visibility = 'visible';
   slideOverlay.style.opacity = '0';
   slideOverlay.style.transform = '';
+  slideOverlay.style.backgroundImage = '';
+  slideVideo.pause();
   if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
   slideVideo.src = '';
-  slideThumb.src = ''; slideThumb.style.display = 'none';
   placeholder.style.display = 'flex';
   currentIdx = -1;
   seekBar.value = 0;
@@ -800,8 +798,8 @@ if ('serviceWorker' in navigator) {
   const EDGE_MARGIN = 40;
 
   function applyZoom() {
-    // スワイプ(translateX)とズーム(scale+pan)を1つのtransformに合成（GPU合成で滑らか）
-    videoEl.style.transform = `translateX(${slideX}px) scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
+    // translateZ(0)を末尾に追加してGPUレイヤーを常時維持（スワイプ中の画質劣化防止）
+    videoEl.style.transform = `translateX(${slideX}px) scale(${scale}) translate(${panX / scale}px, ${panY / scale}px) translateZ(0)`;
     zoomBtn.classList.toggle('show', scale > 1.05);
   }
 
@@ -883,9 +881,10 @@ if ('serviceWorker' in navigator) {
     slideOverlay.style.transition = 'transform 0.45s ease-in-out';
     slideOverlay.style.transform = 'translateX(0)';
     setTimeout(async () => {
+      // visibility:hiddenを先に立てて slideX=0 の瞬間フラッシュを防ぐ
+      videoEl.style.visibility = 'hidden';
       videoEl.style.transition = '';
-      slideX = 0; // 位置リセット（この後hiddenにしてからresetZoomで確定）
-      videoEl.style.visibility = 'hidden'; // 差替中は完全に非表示
+      slideX = 0;
       videoEl.pause();
       if (videoEl._objectURL) URL.revokeObjectURL(videoEl._objectURL);
       const url = URL.createObjectURL(videos[idx].blob);
@@ -895,22 +894,23 @@ if ('serviceWorker' in navigator) {
       currentIdx = idx;
       resetZoom();
       try { await videoEl.play(); } catch(e) {}
-      // 新動画の実フレームが描画されるまで待ってから表示（残フレーム対策の要）
+      // 新動画の実フレームが描画されるまで待ってから表示
       await nextPaintedFrame(videoEl);
       updatePlayIcon(false);
       renderList();
       const activeEl = document.querySelector('.video-item.active');
       if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       videoEl.style.visibility = 'visible';
-      slideOverlay.style.transition = 'opacity 0.12s ease';
+      slideOverlay.style.transition = 'opacity 0.2s ease';
       slideOverlay.style.opacity = '0';
       setTimeout(() => {
         slideOverlay.style.transition = '';
         slideOverlay.style.transform = '';
+        slideOverlay.style.backgroundImage = '';
+        slideVideo.pause();
         slideVideo.src = '';
         if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
-        slideThumb.src = ''; slideThumb.style.display = 'none';
-      }, 180);
+      }, 220);
     }, 460);
   }
 
@@ -995,18 +995,15 @@ if ('serviceWorker' in navigator) {
           ? (currentIdx > 0 ? currentIdx - 1 : (loopMode ? videos.length - 1 : -1))   // 左→右 = 前
           : (currentIdx < videos.length - 1 ? currentIdx + 1 : (loopMode ? 0 : -1));   // 右→左 = 次
         if (neighborIdx >= 0 && videos[neighborIdx]) {
-          // サムネイルを即座に表示して黒い瞬間を防ぐ
-          if (videos[neighborIdx].thumb) {
-            slideThumb.src = videos[neighborIdx].thumb;
-            slideThumb.style.display = 'block';
-          } else {
-            slideThumb.style.display = 'none';
-          }
+          // サムネイルをoverlay背景に即表示（black flash根本対策）
+          slideOverlay.style.backgroundImage =
+            videos[neighborIdx].thumb ? `url("${videos[neighborIdx].thumb}")` : '';
           if (slideVideo._objectURL) URL.revokeObjectURL(slideVideo._objectURL);
           const url = URL.createObjectURL(videos[neighborIdx].blob);
           slideVideo._objectURL = url;
           slideVideo.src = url;
           slideVideo.load();
+          slideVideo.play().catch(() => {}); // ミュート再生でフレームを事前レンダリング
         }
       }
       moved = true;
@@ -1026,14 +1023,16 @@ if ('serviceWorker' in navigator) {
 
   function cancelSlide() {
     videoEl.style.transition = 'transform 0.35s ease-out';
-    slideX = 0; applyZoom(); // 元位置へスムーズに戻す
-    slideOverlay.style.transition = 'transform 0.35s ease, opacity 0.35s';
+    slideX = 0; applyZoom();
+    slideOverlay.style.transition = 'opacity 0.35s';
     slideOverlay.style.opacity = '0';
     setTimeout(() => {
       videoEl.style.transition = '';
       slideOverlay.style.transition = '';
+      slideOverlay.style.backgroundImage = '';
+      slideVideo.pause();
       slideVideo.src = '';
-      slideThumb.src = ''; slideThumb.style.display = 'none';
+      if (slideVideo._objectURL) { URL.revokeObjectURL(slideVideo._objectURL); slideVideo._objectURL = null; }
     }, 360);
   }
 
