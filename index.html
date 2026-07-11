@@ -90,9 +90,9 @@
     position: relative;
   }
 
-  /* メイン動画: 高さ優先で自然アスペクト比（object-fitなし＝GPU再サンプルなし） */
+  /* メイン動画: 高さはJSでpx指定（iOSSafariの%解決バグ回避）、幅はauto=AR維持 */
   #videoEl {
-    max-height: 100%; width: auto;
+    height: auto; width: auto;
     display: block;
     transform-origin: center center;
     will-change: transform;
@@ -583,6 +583,7 @@ function stopVideo() {
   videoEl.pause(); videoEl.src = '';
   if (videoEl._clearSlide) videoEl._clearSlide(); else videoEl.style.transform = '';
   videoEl.style.visibility = 'visible';
+  videoEl.style.height = ''; videoEl.style.width = '';
   slideOverlay.style.opacity = '0';
   slideOverlay.style.transform = '';
   slideOverlay.style.backgroundImage = '';
@@ -809,6 +810,17 @@ if ('serviceWorker' in navigator) {
     applyZoom();
     zoomBtn.classList.remove('show');
   }
+
+  // iOSSafariでflex子要素の%高さが未解決になるためJSでpx指定
+  function fitVideo() {
+    const h = wrap.clientHeight;
+    if (h > 0) {
+      videoEl.style.height = h + 'px';
+      videoEl.style.width = 'auto';
+    }
+  }
+  videoEl.addEventListener('loadedmetadata', fitVideo);
+  window.addEventListener('resize', () => { if (videoEl.src) fitVideo(); });
 
   zoomBtn.addEventListener('click', resetZoom);
 
