@@ -253,6 +253,18 @@
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
   }
+
+  /* ===== 全画面表示 ===== */
+  /* ヘッダー・一覧を隠して動画を画面全体に。操作部は動画の上に重ね、再生中は自動で隠す */
+  body.fs .header, body.fs .sidebar, body.fs #ver { display: none; }
+  body.fs .player-area { position: relative; }
+  body.fs .controls {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 30;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0.35) 70%, transparent);
+    border-top: none;
+    transition: opacity 0.3s;
+  }
+  body.fs .controls.hide { opacity: 0; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -304,7 +316,11 @@
         <span class="time" style="text-align:right" id="duration">0:00</span>
       </div>
       <div class="ctrl-row">
-        <div style="width:84px;"></div>
+        <div style="width:84px;">
+          <button class="btn" id="fsBtn" style="padding:8px 10px;" title="全画面表示">
+            <svg id="fsIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg>
+          </button>
+        </div>
         <div class="ctrl-center">
           <button class="nav-btn" id="prevBtn" aria-label="前の動画">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -702,6 +718,73 @@ document.getElementById('loopBtn').addEventListener('click', () => {
 });
 updateLoopUI(); // 初期表示を loopMode（既定ON）に同期
 
+// ===== 全画面表示 =====
+// ホーム画面アプリではFullscreen APIが効かないことがあるため、CSS（body.fs）での全画面を主とし、
+// Safariで開いている場合はFullscreen APIも併用してブラウザのUIまで隠す
+const controlsEl = document.querySelector('.controls');
+const FS_HIDE_MS = 3000; // 再生中、最後の操作からこの時間で操作部を隠す
+let fsHideTimer = null;
+
+function isFs() { return document.body.classList.contains('fs'); }
+
+function scheduleFsHide() {
+  clearTimeout(fsHideTimer);
+  if (!isFs()) return;
+  fsHideTimer = setTimeout(() => {
+    if (isFs() && !videoEl.paused) controlsEl.classList.add('hide');
+  }, FS_HIDE_MS);
+}
+
+function showFsControls() {
+  controlsEl.classList.remove('hide');
+  scheduleFsHide();
+}
+
+// 全画面で操作部が隠れているときのタップは「操作部を出すだけ」にする（再生/一時停止はしない）
+// 戻り値 true = このタップは操作部の表示に使った
+function revealFsControls() {
+  if (!isFs() || !controlsEl.classList.contains('hide')) return false;
+  showFsControls();
+  return true;
+}
+
+function updateFsIcon() {
+  document.getElementById('fsIcon').innerHTML = isFs()
+    ? '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>'
+    : '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>';
+  document.getElementById('fsBtn').title = isFs() ? '全画面を終了' : '全画面表示';
+}
+
+function setFullscreen(on) {
+  document.body.classList.toggle('fs', on);
+  updateFsIcon();
+  if (on) showFsControls();
+  else { clearTimeout(fsHideTimer); controlsEl.classList.remove('hide'); }
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  try {
+    if (on && !fsEl) {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      const p = req && req.call(el);
+      if (p && p.catch) p.catch(() => {}); // 使えない環境はCSSの全画面のみ
+    } else if (!on && fsEl) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      const p = exit && exit.call(document);
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch (e) {}
+}
+
+document.getElementById('fsBtn').addEventListener('click', () => setFullscreen(!isFs()));
+// Safariの×ボタンや下スワイプでFullscreen APIが解除されたら、アプリ側の全画面も解除
+['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement) && isFs()) setFullscreen(false);
+}));
+videoEl.addEventListener('play', scheduleFsHide);
+videoEl.addEventListener('pause', () => { clearTimeout(fsHideTimer); controlsEl.classList.remove('hide'); });
+controlsEl.addEventListener('touchstart', () => { if (isFs()) scheduleFsHide(); }, { passive: true });
+updateFsIcon();
+
 document.getElementById('addBtn').addEventListener('click', () => {
   document.getElementById('fileInput').click();
 });
@@ -820,7 +903,9 @@ if ('serviceWorker' in navigator) {
     }
   }
   videoEl.addEventListener('loadedmetadata', fitVideo);
-  window.addEventListener('resize', () => { if (videoEl.src) fitVideo(); });
+  // 全画面の切替は表示領域だけが変わりwindowのresizeが来ないため、領域自体のサイズ変化を監視
+  if ('ResizeObserver' in window) new ResizeObserver(() => { if (videoEl._objectURL) fitVideo(); }).observe(wrap);
+  else window.addEventListener('resize', () => { if (videoEl._objectURL) fitVideo(); });
 
   zoomBtn.addEventListener('click', resetZoom);
 
@@ -1069,6 +1154,7 @@ if ('serviceWorker' in navigator) {
       const dx = e.changedTouches[0].clientX - startX;
       const dy = e.changedTouches[0].clientY - startY;
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && videoEl.src) {
+        if (revealFsControls()) return; // 全画面で操作部が隠れていた → 表示のみ
         if (!registerTap()) { videoEl.paused ? videoEl.play() : videoEl.pause(); } // 3連続なら解除
       }
       return;
@@ -1084,7 +1170,7 @@ if ('serviceWorker' in navigator) {
     // タップ
     if (!moved || Math.abs(dx) < 10) {
       cancelSlide();
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && videoEl.src) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && videoEl.src && !revealFsControls()) { // 全画面で隠れていたら表示のみ
         if (!registerTap()) { videoEl.paused ? videoEl.play() : videoEl.pause(); } // 3連続なら解除（拡大時のみ）
       }
       moved = false; return;
