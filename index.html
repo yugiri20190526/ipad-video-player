@@ -857,7 +857,18 @@ function setProgress(pct, label) {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // updateViaCache:'none' でsw.js自体もHTTPキャッシュを通さず更新確認する
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    // ホーム画面アプリは閉じても裏で生きていることが多いので、前面に戻るたびに更新を確認
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+  // 新しい版のSWに切り替わったら、動画を再生していなければ自動で読み込み直して新版にする
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && (videoEl.paused || !videoEl._objectURL)) location.reload();
+  });
 }
 
 // ===== スライドスワイプ ＋ ピンチズーム =====
