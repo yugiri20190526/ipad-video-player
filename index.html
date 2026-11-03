@@ -47,8 +47,8 @@
   .btn-danger { border-color: #ff4a4a44; color: #ff6b6b; }
   .main { display: flex; flex: 1; overflow: hidden; }
   .sidebar {
-    width: 260px; flex-shrink: 0;
-    border-right: 0.5px solid var(--border);
+    width: 350px; flex-shrink: 0; order: 2; /* 一覧は画面右側。サムネ270px＋余白 */
+    border-left: 0.5px solid var(--border);
     display: flex; flex-direction: column; overflow: hidden;
   }
   .sidebar-header {
@@ -66,7 +66,7 @@
   .video-item:active { background: var(--bg3); }
   .video-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
   .video-thumb {
-    width: 180px; height: 113px; background: var(--bg3);
+    width: 270px; height: 169px; background: var(--bg3);
     border-radius: 4px; display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; font-size: 14px; color: var(--text2);
     overflow: hidden; position: relative;
@@ -367,8 +367,8 @@
 
 <script>
 const DB_NAME = 'videoPlayerDB3', STORE = 'videos', DB_VER = 1; // 既存v2DBとの版数衝突を避け新規DBで開始
-const THUMB_VER = 3; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
-const THUMB_W = 320, THUMB_H = 200; // 高画質化: 表示120x75の約2.7x（Retina対応）。アスペクトは表示枠と同じ1.6
+const THUMB_VER = 4; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
+const THUMB_W = 540, THUMB_H = 338; // 表示270x169の2倍（Retina対応）。アスペクトは表示枠と同じ1.6
 const THUMB_Q = 0.85;               // JPEG品質
 let db, videos = [], currentIdx = -1;
 let loopMode = true;        // プレイリスト周回（前/次/スワイプ/末尾で先頭へ）。既定ON
