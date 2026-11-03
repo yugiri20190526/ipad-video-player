@@ -775,7 +775,30 @@ function setFullscreen(on) {
   } catch (e) {}
 }
 
-document.getElementById('fsBtn').addEventListener('click', () => setFullscreen(!isFs()));
+// YouTube式に、切替前の見た目の位置・大きさから新しい位置へ動画をなめらかに拡大/縮小させる（FLIP）
+// fromSwipe=true: スワイプで全画面にしたときは操作部を出さない（再生中のみ）
+const wrapEl = document.getElementById('videoWrap');
+function toggleFullscreenAnimated(on, fromSwipe) {
+  const first = wrapEl.getBoundingClientRect(); // ドラッグ中の変形も含んだ現在の見た目
+  wrapEl.style.transition = 'none';
+  wrapEl.style.transform = '';
+  setFullscreen(on);
+  if (on && fromSwipe && !videoEl.paused) controlsEl.classList.add('hide');
+  const last = wrapEl.getBoundingClientRect();
+  if (!last.height) return;
+  // 動画は高さいっぱいに表示しているので、高さ基準の等倍率で縮めて元の位置に重ねてから戻す
+  const s = first.height / last.height;
+  const tx = (first.left + first.width / 2) - (last.left + last.width / 2);
+  const ty = (first.top + first.height / 2) - (last.top + last.height / 2);
+  wrapEl.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  wrapEl.getBoundingClientRect(); // 開始位置を確定させてからアニメーション
+  wrapEl.style.transition = 'transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)';
+  wrapEl.style.transform = '';
+  clearTimeout(wrapEl._fsAnim);
+  wrapEl._fsAnim = setTimeout(() => { wrapEl.style.transition = ''; }, 350);
+}
+
+document.getElementById('fsBtn').addEventListener('click', () => toggleFullscreenAnimated(!isFs(), false));
 // Safariの×ボタンや下スワイプでFullscreen APIが解除されたら、アプリ側の全画面も解除
 ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
   if (!(document.fullscreenElement || document.webkitFullscreenElement) && isFs()) setFullscreen(false);
@@ -889,6 +912,28 @@ if ('serviceWorker' in navigator) {
   // スワイプ状態
   let startX = 0, startY = 0, moved = false, ignored = false, active = false;
   let vertical = false;    // 縦スワイプ（全画面の切替）と判定済み
+  let startT = 0;          // タッチ開始時刻（素早い払いの判定用）
+
+  // 縦ドラッグ中は指に合わせて動画を動かす（YouTube式）。上=少し持ち上げて拡大 / 全画面中の下=下げながら縮小
+  function dragFs(dy) {
+    let t = '';
+    if (!isFs() && dy < 0) {
+      const p = Math.min(1, -dy / 200);
+      t = `translateY(${dy * 0.35}px) scale(${1 + 0.12 * p})`;
+    } else if (isFs() && dy > 0) {
+      const p = Math.min(1, dy / 300);
+      t = `translateY(${dy * 0.7}px) scale(${1 - 0.25 * p})`;
+    }
+    wrap.style.transition = 'none';
+    wrap.style.transform = t;
+  }
+
+  // 切り替えずに指を離したら元の位置へなめらかに戻す
+  function releaseFsDrag() {
+    wrap.style.transition = 'transform 0.25s ease-out';
+    wrap.style.transform = '';
+    setTimeout(() => { wrap.style.transition = ''; }, 270);
+  }
   const FS_SWIPE = 60;     // YouTube式: 上スワイプで全画面 / 全画面中の下スワイプで縮小
   const THRESHOLD   = 45;
   const MAX_Y       = 55;
@@ -1055,7 +1100,7 @@ if ('serviceWorker' in navigator) {
     }
 
     if (x < EDGE_MARGIN || x > sw - EDGE_MARGIN) { ignored = true; active = false; return; }
-    ignored = false; active = true; moved = false; vertical = false;
+    ignored = false; active = true; moved = false; vertical = false; startT = Date.now();
     startX = x; startY = y;
     e.preventDefault();
   }
@@ -1098,9 +1143,9 @@ if ('serviceWorker' in navigator) {
     e.preventDefault();
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    if (vertical) return;
+    if (vertical) { dragFs(dy); return; }
     // 動き始めが縦向きなら全画面切替のスワイプとして扱い、横スライドは始めない
-    if (!moved && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { vertical = true; return; }
+    if (!moved && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { vertical = true; dragFs(dy); return; }
     if (Math.abs(dx) > 8 && (moved || Math.abs(dx) > Math.abs(dy))) {
       if (!moved) {
         // スワイプ開始時に隣動画をオーバーレイにロード
@@ -1153,6 +1198,7 @@ if ('serviceWorker' in navigator) {
     resetArrows();
     pinching = false;
     cancelSlide();
+    if (vertical) releaseFsDrag();
     active = false; moved = false; ignored = false; vertical = false;
   }
 
@@ -1185,8 +1231,11 @@ if ('serviceWorker' in navigator) {
 
     if (vertical) {
       vertical = false; moved = false;
-      if (dy < -FS_SWIPE && !isFs()) setFullscreen(true);      // 上スワイプ = 全画面
-      else if (dy > FS_SWIPE && isFs()) setFullscreen(false);  // 下スワイプ = 縮小
+      // 距離が足りなくても素早く払えば切り替える（YouTubeと同じ感覚）
+      const flick = Date.now() - startT < 250 && Math.abs(dy) > 25;
+      if (dy < 0 && !isFs() && (dy < -FS_SWIPE || flick)) toggleFullscreenAnimated(true, true);      // 上スワイプ = 全画面
+      else if (dy > 0 && isFs() && (dy > FS_SWIPE || flick)) toggleFullscreenAnimated(false, true);  // 下スワイプ = 縮小
+      else releaseFsDrag();
       return;
     }
 
