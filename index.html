@@ -367,7 +367,7 @@
 
 <script>
 const DB_NAME = 'videoPlayerDB3', STORE = 'videos', DB_VER = 1; // 既存v2DBとの版数衝突を避け新規DBで開始
-const THUMB_VER = 4; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）
+const THUMB_VER = 3; // サムネイル生成ロジックのバージョン（上げると旧サムネを再生成）。全件再生成は裏で動画を開き続けiPadで再生を妨げるので安易に上げない
 const THUMB_W = 540, THUMB_H = 338; // 表示270x169の2倍（Retina対応）。アスペクトは表示枠と同じ1.6
 const THUMB_Q = 0.85;               // JPEG品質
 let db, videos = [], currentIdx = -1;
